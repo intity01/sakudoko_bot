@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sakudoko Music Bot - Dashboard Control Center สำหรับจัดการบอทเพลง Discord">
+    <meta name="keywords" content="Discord, Music Bot, Sakudoko, Dashboard">
+    <meta name="author" content="Sakudoko Team">
+    <title>Sakudoko — Real-time Dashboard</title>
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        /* --- Theme Variables (Cream / White / Orange) --- */
+        :root {
+            --bg: #FDFBF7;
+            --surface: #FFFFFF;
+            --surface-hover: #FFF7ED;
+            --primary: #F97316;
+            --primary-hover: #ea580c;
+            --primary-light: #FFEDD5;
+            --text-main: #334155;
+            --text-muted: #94A3B8;
+            --border: #F1F5F9;
+            --radius: 20px;
+            --radius-btn: 50px;
+            --shadow: 0 10px 40px -10px rgba(249, 115, 22, 0.1);
+            --transition: all 0.2s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Sarabun', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1100px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            text-decoration: none;
+        }
+
+        .brand-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: white;
+            box-shadow: 0 4px 15px rgba(249, 115, 22, 0.3);
+            transition: var(--transition);
+        }
+
+        .brand-logo:hover {
+            transform: rotate(15deg) scale(1.05);
+        }
+
+        .brand-text h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #1e293b;
+        }
+        
+        .brand-text span { 
+            color: var(--primary); 
+        }
+
+        .brand-text p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border-radius: var(--radius-btn);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: var(--transition);
+            border: 1px solid transparent;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 15px rgba(249, 115, 22, 0.25);
+        }
+        
+        .btn-primary:hover { 
+            transform: translateY(-2px); 
+            background: var(--primary-hover);
+            box-shadow: 0 6px 20px rgba(249, 115, 22, 0.35);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        }
+        
+        .btn-secondary:hover { 
+            border-color: var(--primary-light); 
+            background: var(--surface-hover);
+            color: var(--primary);
+        }
+
+        .actions-header { 
+            display: flex; 
+            gap: 12px; 
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            border: 1px solid white;
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            box-shadow: 0 15px 50px -15px rgba(249, 115, 22, 0.15);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1.2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #1e293b;
+        }
+
+        .status-dot {
+            height: 8px;
+            width: 8px;
+            background-color: #22c55e;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.offline {
+            background-color: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .terminal-window {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 1.5rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            height: 320px;
+            overflow-y: auto;
+            color: #f1f5f9;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .terminal-window::-webkit-scrollbar { width: 6px; }
+        .terminal-window::-webkit-scrollbar-track { background: transparent; }
+        .terminal-window::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+
+        .log-line { 
+            margin-bottom: 8px; 
+            border-bottom: 1px dashed rgba(255,255,255,0.1); 
+            padding-bottom: 4px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .log-time { 
+            color: #64748b; 
+            font-size: 0.8rem; 
+            margin-right: 8px; 
+        }
+        
+        .log-info { 
+            color: #38bdf8; 
+            font-weight: bold; 
+        }
+        
+        .log-play { 
+            color: #fb923c; 
+            font-weight: bold; 
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        
+        .stat-box {
+            flex: 1;
+            background: var(--bg);
+            padding: 1.2rem;
+            border-radius: 16px;
+            text-align: center;
+            border: 1px solid rgba(0,0,0,0.03);
+            transition: var(--transition);
+        }
+
+        .stat-box:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(249, 115, 22, 0.1);
+        }
+        
+        .stat-val { 
+            font-size: 1.5rem; 
+            font-weight: 700; 
+            color: var(--primary);
+            transition: var(--transition);
+        }
+        
+        .stat-lbl { 
+            font-size: 0.75rem; 
+            color: var(--text-muted); 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            font-weight: 600;
+        }
+
+        .cmd-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .cmd-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .cmd-item:hover {
+            border-color: var(--primary);
+            background: var(--surface-hover);
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.1);
+        }
+
+        .cmd-left { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 2px; 
+        }
+        
+        .cmd-name { 
+            font-family: 'Courier New', monospace; 
+            color: var(--primary); 
+            font-weight: 700; 
+            font-size: 0.95rem; 
+            background: var(--primary-light);
+            padding: 2px 8px;
+            border-radius: 6px;
+            width: fit-content;
+        }
+        
+        .cmd-desc { 
+            font-size: 0.85rem; 
+            color: var(--text-muted); 
+            margin-top: 4px; 
+        }
+        
+        .cmd-icon { 
+            color: var(--primary); 
+            opacity: 0; 
+            transition: opacity 0.2s; 
+        }
+        
+        .cmd-item:hover .cmd-icon { 
+            opacity: 1; 
+        }
+
+        footer {
+            margin-top: 4rem;
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #1e293b;
+            color: white;
+            padding: 12px 28px;
+            border-radius: 50px;
+            font-weight: 600;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 999;
+        }
+        
+        .notification.show { 
+            opacity: 1; 
+            transform: translateX(-50%) translateY(0); 
+        }
+        
+        .notification i { 
+            color: #4ade80; 
+        }
+
+        .btn:focus,
+        .cmd-item:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            padding: 4px 12px;
+            background: rgba(0,0,0,0.02);
+            border-radius: 20px;
+        }
+
+        .connection-status.connected {
+            color: #22c55e;
+        }
+
+        .connection-status.disconnected {
+            color: #ef4444;
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 1rem 0.5rem; }
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .stats-row { flex-direction: column; gap: 1rem; }
+            header { flex-direction: column; gap: 1.5rem; align-items: flex-start; }
+            .actions-header { width: 100%; flex-direction: column; }
+            .btn { flex: 1; justify-content: center; width: 100%; }
+            .terminal-window { height: 250px; font-size: 0.8rem; }
+            .card { padding: 1.2rem; }
+        }
+
+        @media (max-width: 480px) {
+            .brand-text h1 { font-size: 1.2rem; }
+            .card-title { font-size: 1rem; }
+            .stat-val { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <header>
+            <div class="brand">
+                <div class="brand-logo" aria-label="Sakudoko Logo">
+                    <i class="fas fa-music"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>Sakudoko<span>.</span></h1>
+                    <p>Real-time Dashboard</p>
+                </div>
+            </div>
+            <div class="actions-header">
+                <a href="https://discord.com/oauth2/authorize?client_id=1438729107578814564&scope=bot+applications.commands&permissions=277025508352" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   class="btn btn-primary"
+                   aria-label="Invite Sakudoko Bot to Discord">
+                    <i class="fab fa-discord"></i> Invite Bot
+                </a>
+                <a href="https://github.com/intity01/Sakukodo_-Bots_Music" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   class="btn btn-secondary"
+                   aria-label="View GitHub Repository">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            
+            <main class="main-content">
+                <div class="card">
+                    <div class="card-title">
+                        System Logs
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="connection-status" id="ws-status">
+                                <i class="fas fa-circle"></i> Connecting...
+                            </span>
+                            <span id="status-text" style="font-size:0.85rem; font-weight:600; color:var(--text-muted);">
+                                Online <span class="status-dot" id="status-dot" aria-label="Status: Online"></span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="terminal-window" id="terminal" role="log" aria-live="polite" aria-label="System Logs Terminal">
+                        <div class="log-line">
+                            <span class="log-time">[--:--:--]</span> 
+                            <span class="log-info">INFO:</span> Connecting to server...
+                        </div>
+                    </div>
+
+                    <div class="stats-row">
+                        <div class="stat-box">
+                            <div class="stat-val" id="stat-servers" aria-label="Servers">--</div>
+                            <div class="stat-lbl">Servers</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-val" id="stat-users" aria-label="Users">--</div>
+                            <div class="stat-lbl">Users</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-val" id="stat-uptime" aria-label="Uptime">--</div>
+                            <div class="stat-lbl">Uptime</div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <aside class="sidebar">
+                <div class="card">
+                    <div class="card-title">
+                        Quick Commands
+                        <button onclick="copyAll()" 
+                                class="btn btn-secondary" 
+                                style="padding: 4px 12px; font-size: 0.75rem; min-height: unset; border-radius: 12px;"
+                                aria-label="Copy All Commands">
+                            Copy All
+                        </button>
+                    </div>
+                    
+                    <div class="cmd-list" id="cmd-list" role="list">
+                        <!-- Commands will be loaded dynamically -->
+                    </div>
+                </div>
+            </aside>
+
+        </div>
+
+        <footer>
+            © 2025 <a href="https://github.com/intity01/Sakukodo_-Bots_Music" target="_blank" rel="noopener noreferrer">Sakudoko</a> — Real-time Dashboard with API
+        </footer>
+
+    </div>
+
+    <div id="notification" class="notification" role="alert" aria-live="assertive">
+        <i class="fas fa-check-circle" aria-hidden="true"></i>
+        <span id="notif-text">Copied to clipboard!</span>
+    </div>
+
+    <script>
+        // API Configuration
+        const API_BASE = window.location.origin;
+        const WS_URL = `ws://${window.location.host}/ws/logs`;
+        
+        let ws = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCommands();
+            connectWebSocket();
+            startStatsPolling();
+            checkHealth();
+        });
+
+        // Load commands from API
+        async function loadCommands() {
+            try {
+                const response = await fetch(`${API_BASE}/api/commands`);
+                const data = await response.json();
+                
+                const cmdList = document.getElementById('cmd-list');
+                cmdList.innerHTML = '';
+                
+                data.commands.forEach(cmd => {
+                    const cmdItem = document.createElement('div');
+                    cmdItem.className = 'cmd-item';
+                    cmdItem.onclick = () => copyText(cmd.name);
+                    cmdItem.setAttribute('role', 'listitem');
+                    cmdItem.setAttribute('tabindex', '0');
+                    cmdItem.onkeypress = (e) => handleKeyPress(e, cmd.name);
+                    cmdItem.setAttribute('aria-label', `Copy ${cmd.name} command`);
+                    
+                    cmdItem.innerHTML = `
+                        <div class="cmd-left">
+                            <span class="cmd-name">${cmd.name}</span>
+                            <span class="cmd-desc">${cmd.description}</span>
+                        </div>
+                        <i class="fas fa-copy cmd-icon" aria-hidden="true"></i>
+                    `;
+                    
+                    cmdList.appendChild(cmdItem);
+                });
+            } catch (error) {
+                console.error('Failed to load commands:', error);
+            }
+        }
+
+        // WebSocket connection for real-time logs
+        function connectWebSocket() {
+            const wsStatus = document.getElementById('ws-status');
+            wsStatus.innerHTML = '<i class="fas fa-circle"></i> Connecting...';
+            wsStatus.className = 'connection-status';
+            
+            try {
+                ws = new WebSocket(WS_URL);
+                
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    wsStatus.innerHTML = '<i class="fas fa-circle"></i> Connected';
+                    wsStatus.className = 'connection-status connected';
+                    reconnectAttempts = 0;
+                    
+                    // Send ping every 25 seconds
+                    setInterval(() => {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send('ping');
+                        }
+                    }, 25000);
+                };
+                
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'initial') {
+                        // Clear terminal and add initial logs
+                        const terminal = document.getElementById('terminal');
+                        terminal.innerHTML = '';
+                        data.logs.forEach(log => addLogToTerminal(log));
+                    } else if (data.type === 'new_log') {
+                        addLogToTerminal(data.log);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    wsStatus.innerHTML = '<i class="fas fa-circle"></i> Error';
+                    wsStatus.className = 'connection-status disconnected';
+                };
+                
+                ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    wsStatus.innerHTML = '<i class="fas fa-circle"></i> Disconnected';
+                    wsStatus.className = 'connection-status disconnected';
+                    
+                    // Attempt to reconnect
+                    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                        reconnectAttempts++;
+                        setTimeout(() => {
+                            console.log(`Reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                            connectWebSocket();
+                        }, 3000 * reconnectAttempts);
+                    }
+                };
+            } catch (error) {
+                console.error('Failed to create WebSocket:', error);
+                wsStatus.innerHTML = '<i class="fas fa-circle"></i> Failed';
+                wsStatus.className = 'connection-status disconnected';
+            }
+        }
+
+        // Add log to terminal
+        function addLogToTerminal(log) {
+            const terminal = document.getElementById('terminal');
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line';
+            
+            const logClass = log.type === 'INFO' ? 'log-info' : 'log-play';
+            logLine.innerHTML = `
+                <span class="log-time">${log.time}</span> 
+                <span class="${logClass}">${log.type}:</span> ${log.message}
+            `;
+            
+            terminal.appendChild(logLine);
+            
+            // Keep only last 30 logs in DOM
+            while (terminal.children.length > 30) {
+                terminal.removeChild(terminal.firstChild);
+            }
+            
+            // Auto-scroll to bottom
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // Poll stats every 5 seconds
+        function startStatsPolling() {
+            updateStats();
+            setInterval(updateStats, 5000);
+        }
+
+        async function updateStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/stats`);
+                const data = await response.json();
+                
+                // Format numbers
+                const servers = data.servers >= 1000 
+                    ? (data.servers / 1000).toFixed(1) + 'K' 
+                    : data.servers;
+                const users = data.users >= 1000 
+                    ? (data.users / 1000).toFixed(1) + 'K' 
+                    : data.users;
+                
+                // Update with animation
+                animateValue('stat-servers', servers);
+                animateValue('stat-users', users);
+                document.getElementById('stat-uptime').textContent = data.uptime.split(' ').slice(0, 2).join(' ');
+            } catch (error) {
+                console.error('Failed to update stats:', error);
+                // Show error state
+                document.getElementById('stat-servers').textContent = '--';
+                document.getElementById('stat-users').textContent = '--';
+                document.getElementById('stat-uptime').textContent = '--';
+            }
+        }
+
+        function animateValue(elementId, newValue) {
+            const element = document.getElementById(elementId);
+            if (element.textContent !== newValue) {
+                element.style.transform = 'scale(1.1)';
+                element.textContent = newValue;
+                setTimeout(() => {
+                    element.style.transform = 'scale(1)';
+                }, 200);
+            }
+        }
+
+        // Check health every 30 seconds
+        function checkHealth() {
+            updateHealth();
+            setInterval(updateHealth, 30000);
+        }
+
+        async function updateHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+                
+                const statusText = document.getElementById('status-text');
+                const statusDot = document.getElementById('status-dot');
+                
+                if (data.status === 'online') {
+                    statusText.innerHTML = `Online <span class="status-dot" id="status-dot"></span>`;
+                    statusDot.classList.remove('offline');
+                } else {
+                    statusText.innerHTML = `Offline <span class="status-dot offline" id="status-dot"></span>`;
+                    statusDot.classList.add('offline');
+                }
+            } catch (error) {
+                console.error('Failed to check health:', error);
+                // Show disconnected state
+                const statusText = document.getElementById('status-text');
+                statusText.innerHTML = `<span style="color: #ef4444;">Disconnected</span>`;
+                showNotification('❌ API Server ไม่ตอบสนอง - กรุณารันบอทก่อน');
+            }
+        }
+
+        // Copy functions
+        function copyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text)
+                    .then(() => showToast('Copied: ' + text))
+                    .catch(err => {
+                        console.error('Failed to copy:', err);
+                        showToast('Failed to copy!');
+                    });
+            } else {
+                fallbackCopyText(text);
+            }
+        }
+
+        function fallbackCopyText(text) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Copied: ' + text);
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                showToast('Failed to copy!');
+            }
+            document.body.removeChild(textArea);
+        }
+
+        function copyAll() {
+            const cmds = Array.from(document.querySelectorAll('.cmd-name'))
+                .map(el => el.textContent)
+                .join('\n');
+            
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(cmds)
+                    .then(() => showToast('Copied all commands!'))
+                    .catch(err => {
+                        console.error('Failed to copy all:', err);
+                        showToast('Failed to copy!');
+                    });
+            } else {
+                fallbackCopyText(cmds);
+            }
+        }
+
+        function showToast(message) {
+            const notif = document.getElementById('notification');
+            const notifText = document.getElementById('notif-text');
+            notifText.textContent = message;
+            notif.classList.add('show');
+            setTimeout(() => {
+                notif.classList.remove('show');
+            }, 2000);
+        }
+
+        function handleKeyPress(event, text) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                copyText(text);
+            }
+        }
+    </script>
+</body>
+</html>
