@@ -90,9 +90,14 @@ async def read_root():
     """Serve the main HTML page"""
     return FileResponse("index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
+@app.get("/health")
+async def health_check_simple():
+    """Simple health check for Azure"""
+    return {"status": "ok"}
+
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint"""
+    """Detailed health check endpoint"""
     return {
         "status": "online" if bot_state.is_online else "offline",
         "latency": round(bot_state.bot.latency * 1000) if bot_state.bot else 0,
@@ -399,13 +404,40 @@ async def on_resumed():
 
 # --- 6. Main Execution with Auto-Reconnect ---
 
+def validate_environment():
+    """Validate required environment variables"""
+    required_vars = {
+        "DISCORD_TOKEN": "Discord Bot Token is required"
+    }
+    
+    missing = []
+    for var, description in required_vars.items():
+        if not os.getenv(var):
+            missing.append(f"{var}: {description}")
+    
+    if missing:
+        error_msg = "Missing required environment variables:\n" + "\n".join(missing)
+        logger.critical(error_msg)
+        bot_state.add_log("ERROR", error_msg)
+        return False
+    
+    # Validate token format
+    token = os.getenv("DISCORD_TOKEN")
+    if len(token) < 50:
+        logger.critical("DISCORD_TOKEN appears to be invalid (too short)")
+        bot_state.add_log("ERROR", "Invalid DISCORD_TOKEN format")
+        return False
+    
+    logger.info("Environment variables validated successfully")
+    return True
+
 async def run_bot_with_retry():
     """Run bot with automatic reconnection on failure"""
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    if not TOKEN:
-        logger.critical("DISCORD_TOKEN environment variable not set!")
-        bot_state.add_log("ERROR", "DISCORD_TOKEN not set!")
+    # Validate environment first
+    if not validate_environment():
         return
+    
+    TOKEN = os.getenv("DISCORD_TOKEN")
     
     try:
         bot_state.add_log("INFO", "Starting bot...")
@@ -425,9 +457,47 @@ async def run_bot_with_retry():
             bot.db.close()
         await bot.close()
 
+async def shutdown():
+    """Graceful shutdown handler"""
+    logger.info("Shutting down gracefully...")
+    bot_state.add_log("INFO", "Shutting down...")
+    
+    # Close database
+    if bot.db:
+        bot.db.close()
+    
+    # Disconnect from all voice channels
+    for guild_id, manager in bot.managers.items():
+        try:
+            if manager.voice_client:
+                await manager.voice_client.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting from guild {guild_id}: {e}")
+    
+    # Close bot connection
+    await bot.close()
+    
+    logger.info("Shutdown complete")
+    bot_state.add_log("INFO", "Shutdown complete")
+
 if __name__ == "__main__":
+    import signal
+    
+    def signal_handler(sig, frame):
+        """Handle shutdown signals"""
+        logger.info(f"Received signal {sig}, initiating shutdown...")
+        bot_state.add_log("INFO", f"Received shutdown signal")
+        asyncio.create_task(shutdown())
+    
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     try:
         asyncio.run(run_bot_with_retry())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
         bot_state.add_log("INFO", "Bot stopped by user")
+    except Exception as e:
+        logger.critical(f"Fatal error: {e}")
+        bot_state.add_log("ERROR", f"Fatal error: {e}")
