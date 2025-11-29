@@ -32,76 +32,100 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="join", description="ให้บอทเข้าห้องเสียงและสร้างห้องแชทส่วนตัวสำหรับผู้ใช้")
     async def join(self, interaction):
         manager = self.bot.get_manager(interaction.guild_id)
+        
+        # Check voice channel first
         if not interaction.user.voice or not interaction.user.voice.channel:
             await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงก่อน!", ephemeral=True)
             return
         
+        # Defer immediately for long operations
         await interaction.response.defer(ephemeral=True)
         
-        # Connect to voice channel
-        channel = interaction.user.voice.channel
-        if interaction.guild.voice_client is None:
-            vc = await channel.connect()
-            # Mute the bot by default to prevent echo/feedback
-            if vc and hasattr(vc, 'self_mute'):
-                await vc.guild.me.edit(mute=True)
-        elif interaction.guild.voice_client.channel != channel:
-            await interaction.guild.voice_client.move_to(channel)
+        try:
+            # Connect to voice channel
+            channel = interaction.user.voice.channel
+            if interaction.guild.voice_client is None:
+                vc = await channel.connect()
+                # Mute the bot by default to prevent echo/feedback
+                if vc and hasattr(vc, 'self_mute'):
+                    await vc.guild.me.edit(mute=True)
+            elif interaction.guild.voice_client.channel != channel:
+                await interaction.guild.voice_client.move_to(channel)
 
-        # Create/Get Music Room
-        chat_name = f"{interaction.user.name.lower().replace(' ', '-')}-music-room"
-        existing = discord.utils.get(interaction.guild.text_channels, name=chat_name)
-        category = channel.category if channel and channel.category else None
-        
-        # Check if the user is already the owner of a room
-        if manager.owner_id and manager.owner_id != interaction.user.id:
-            # If the room exists and is owned by someone else, only admin can take over
-            if not interaction.user.guild_permissions.administrator:
-                await interaction.followup.send(f"❌ ห้องเพลงถูกสร้างโดย {self.bot.get_user(manager.owner_id).mention} แล้ว", ephemeral=True)
-                return
-            # Admin takeover logic:
-            manager.owner_id = interaction.user.id
-            await interaction.followup.send(f"✅ แอดมินยึดห้องเพลง! คุณคือเจ้าของห้องคนใหม่", ephemeral=True)
+            # Create/Get Music Room
+            chat_name = f"{interaction.user.name.lower().replace(' ', '-')}-music-room"
+            existing = discord.utils.get(interaction.guild.text_channels, name=chat_name)
+            category = channel.category if channel and channel.category else None
             
-        # If no owner, set the current user as owner
-        if not manager.owner_id:
-            manager.owner_id = interaction.user.id
+            # Check if the user is already the owner of a room
+            if manager.owner_id and manager.owner_id != interaction.user.id:
+                # If the room exists and is owned by someone else, only admin can take over
+                if not interaction.user.guild_permissions.administrator:
+                    await interaction.followup.send(f"❌ ห้องเพลงถูกสร้างโดย <@{manager.owner_id}> แล้ว", ephemeral=True)
+                    return
+                # Admin takeover logic:
+                manager.owner_id = interaction.user.id
+                
+            # If no owner, set the current user as owner
+            if not manager.owner_id:
+                manager.owner_id = interaction.user.id
 
-        embed = discord.Embed(title="🎶 Music Room Created", color=0x1DB954)
-        embed.add_field(name="เจ้าของห้อง", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Welcome!", value=f"คุณถูกย้ายเข้าห้องเสียงและสร้างห้องแชทส่วนตัวแล้ว\nสามารถขอเพลงหรือควบคุมเพลงได้ทันที!", inline=False)
-        embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/727/727245.png")
-        embed.set_footer(text="Sakudoko Music Bot", icon_url="https://cdn-icons-png.flaticon.com/512/727/727245.png")
-        
-        from views import RequestFirstSongView # Import here to avoid circular dependency
-        view = RequestFirstSongView()
-        
-        if not existing:
-            # Create a new channel
-            overwrites = {
-                interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False, send_messages=False),
-                interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            }
-            music_channel = await interaction.guild.create_text_channel(chat_name, overwrites=overwrites, category=category)
-            manager.music_channel_id = music_channel.id
+            embed = discord.Embed(title="🎶 Music Room Created", color=0x1DB954)
+            embed.add_field(name="เจ้าของห้อง", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Welcome!", value=f"คุณถูกย้ายเข้าห้องเสียงและสร้างห้องแชทส่วนตัวแล้ว\nสามารถขอเพลงหรือควบคุมเพลงได้ทันที!", inline=False)
+            embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/727/727245.png")
+            embed.set_footer(text="Sakudoko Music Bot", icon_url="https://cdn-icons-png.flaticon.com/512/727/727245.png")
             
-            await music_channel.send(embed=embed, view=view)
-            await interaction.followup.send(f"✅ สร้างห้องแชท {music_channel.mention} แล้ว!", ephemeral=True)
+            from views import RequestFirstSongView # Import here to avoid circular dependency
+            view = RequestFirstSongView()
             
-            # Start cleanup task (moved to manager in main.py)
-            manager.start_cleanup_task(interaction.guild)
-            
-        else:
-            # Use existing channel
-            music_channel = existing
-            manager.music_channel_id = music_channel.id
-            await interaction.followup.send(f"✅ เข้าห้องแชท {music_channel.mention} แล้ว!", ephemeral=True)
-            # Update permissions for the new owner if necessary
-            await music_channel.set_permissions(interaction.user, read_messages=True, send_messages=True)
-            
-        # Send the control view to the music channel if it doesn't exist
-        if not manager.now_playing_msg:
-            await music_channel.send(embed=embed, view=view)
+            if not existing:
+                # Create a new channel with suppressed notifications
+                overwrites = {
+                    interaction.guild.default_role: discord.PermissionOverwrite(
+                        read_messages=False, 
+                        send_messages=False,
+                        mention_everyone=False  # ปิดการ mention @everyone
+                    ),
+                    interaction.user: discord.PermissionOverwrite(
+                        read_messages=True, 
+                        send_messages=True,
+                        mention_everyone=False  # ปิดการ mention @everyone สำหรับ owner ด้วย
+                    ),
+                    interaction.guild.me: discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        mention_everyone=False  # ปิดการ mention @everyone สำหรับ bot
+                    )
+                }
+                music_channel = await interaction.guild.create_text_channel(
+                    chat_name, 
+                    overwrites=overwrites, 
+                    category=category
+                )
+                manager.music_channel_id = music_channel.id
+                
+                await music_channel.send(embed=embed, view=view)
+                await interaction.followup.send(f"✅ สร้างห้องแชท {music_channel.mention} แล้ว!", ephemeral=True)
+                
+                # Start cleanup task (moved to manager in main.py)
+                manager.start_cleanup_task(interaction.guild)
+                
+            else:
+                # Use existing channel
+                music_channel = existing
+                manager.music_channel_id = music_channel.id
+                await interaction.followup.send(f"✅ เข้าห้องแชท {music_channel.mention} แล้ว!", ephemeral=True)
+                # Update permissions for the new owner if necessary
+                await music_channel.set_permissions(interaction.user, read_messages=True, send_messages=True)
+                
+                # Send the control view to the music channel if it doesn't exist
+                if not manager.now_playing_msg:
+                    await music_channel.send(embed=embed, view=view)
+                    
+        except Exception as e:
+            logger.error(f"Error in join command: {e}")
+            await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {str(e)}", ephemeral=True)
 
 
     @app_commands.command(name="leave", description="ให้บอทออกจากห้องเสียงและลบห้องแชทเพลง")

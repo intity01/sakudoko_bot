@@ -83,6 +83,9 @@ class BotState:
 
 bot_state = BotState()
 
+# Mount static files (assets folder)
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
 # Dashboard API Endpoints
 
 @app.get("/")

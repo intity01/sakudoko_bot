@@ -66,8 +66,9 @@ class MusicManager:
     def start_cleanup_task(self, guild: discord.Guild):
         """Starts the cleanup task when the room is created."""
         self.last_activity_time = time.time()
-        if not self.cleanup_task.is_running():
-            self.cleanup_task.start()
+        # Check if task is not already running
+        if self.cleanup_task is None or self.cleanup_task.done():
+            self.cleanup_task = asyncio.create_task(self._cleanup_loop(guild))
 
     async def fade_volume(self, start: float, end: float, duration: float = 2.0, steps: int = 20):
         """Fades the volume of the current player source."""
