@@ -32,10 +32,10 @@ def get_ffmpeg_options(filter_name=None):
 PIPED_INSTANCES = [
     "https://pipedapi.kavin.rocks",
     "https://api-piped.mha.fi",
-    "https://pipedapi.palveluntarjoaja.eu",
-    "https://api.piped.privacydev.net",
     "https://pipedapi.in.projectsegfau.lt",
+    "https://pipedapi-libre.kavin.rocks",
     "https://api.piped.yt",
+    "https://pipedapi.adminforge.de",
 ]
 
 class PipedAPI:
@@ -104,7 +104,11 @@ class PipedAPI:
                                     'webpage_url': f"https://www.youtube.com{item.get('url')}"
                                 })
                         if results:
+                            logger.info(f"Search successful on {instance}")
                             return results
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout searching on {instance}")
+                continue
             except Exception as e:
                 logger.warning(f"Failed to search on {instance}: {e}")
                 continue
@@ -119,7 +123,7 @@ class PipedAPI:
             try:
                 url = f"{instance}/streams/{video_id}"
                 
-                async with session.get(url, timeout=10) as resp:
+                async with session.get(url, timeout=15) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         
@@ -127,20 +131,32 @@ class PipedAPI:
                         audio_streams = data.get('audioStreams', [])
                         
                         if not audio_streams:
-                            raise Exception("No audio stream found")
+                            logger.warning(f"No audio streams in response from {instance}")
+                            continue
                         
                         # เรียงตาม bitrate
                         audio_streams.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
                         best_audio = audio_streams[0]
                         
+                        audio_url = best_audio.get('url')
+                        if not audio_url:
+                            logger.warning(f"No URL in audio stream from {instance}")
+                            continue
+                        
+                        logger.info(f"Successfully got video info from {instance}")
                         return {
                             'id': video_id,
                             'title': data.get('title'),
-                            'url': best_audio.get('url'),
+                            'url': audio_url,
                             'duration': data.get('duration', 0),
                             'thumbnail': data.get('thumbnailUrl'),
                             'webpage_url': f"https://www.youtube.com/watch?v={video_id}"
                         }
+                    else:
+                        logger.warning(f"Got status {resp.status} from {instance}")
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout getting video info from {instance}")
+                continue
             except Exception as e:
                 logger.warning(f"Failed to get video info from {instance}: {e}")
                 continue
