@@ -7,6 +7,11 @@ import logging
 
 logger = logging.getLogger('discord_bot')
 
+class RequestFirstSongView(discord.ui.View):
+    """Simple view to prompt users to request their first song"""
+    def __init__(self):
+        super().__init__(timeout=None)
+
 class MusicControlView(discord.ui.View):
     """Simplified view for music controls"""
     _cooldowns = {}  # user_id: last_used_time
