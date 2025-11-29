@@ -28,21 +28,21 @@ def get_ffmpeg_options(filter_name=None):
         'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
     }
 
-# Invidious instances (ฟรี 100%)
-INVIDIOUS_INSTANCES = [
-    "https://inv.nadeko.net",
-    "https://invidious.private.coffee",
-    "https://iv.nboeck.de",
-    "https://invidious.fdn.fr",
-    "https://inv.tux.pizza",
-    "https://invidious.perennialte.ch",
+# Piped instances (ฟรี 100% - เสถียรกว่า Invidious)
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://api-piped.mha.fi",
+    "https://pipedapi.palveluntarjoaja.eu",
+    "https://api.piped.privacydev.net",
+    "https://pipedapi.in.projectsegfau.lt",
+    "https://api.piped.yt",
 ]
 
-class InvidiousAPI:
-    """Wrapper for Invidious API to fetch YouTube data"""
+class PipedAPI:
+    """Wrapper for Piped API to fetch YouTube data"""
     
     def __init__(self):
-        self.current_instance = random.choice(INVIDIOUS_INSTANCES)
+        self.current_instance = random.choice(PIPED_INSTANCES)
         self.session = None
     
     async def get_session(self):
@@ -78,105 +78,107 @@ class InvidiousAPI:
         return None
     
     async def search(self, query: str, max_results: int = 1):
-        """Search for videos on YouTube via Invidious"""
+        """Search for videos on YouTube via Piped"""
         session = await self.get_session()
         
-        for instance in INVIDIOUS_INSTANCES:
+        for instance in PIPED_INSTANCES:
             try:
-                url = f"{instance}/api/v1/search"
+                url = f"{instance}/search"
                 params = {
                     'q': query,
-                    'type': 'video',
-                    'sort_by': 'relevance'
+                    'filter': 'videos'
                 }
                 
                 async with session.get(url, params=params, timeout=10) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         results = []
-                        for item in data[:max_results]:
-                            results.append({
-                                'id': item.get('videoId'),
-                                'title': item.get('title'),
-                                'duration': item.get('lengthSeconds', 0),
-                                'thumbnail': f"https://i.ytimg.com/vi/{item.get('videoId')}/maxresdefault.jpg",
-                                'webpage_url': f"https://www.youtube.com/watch?v={item.get('videoId')}"
-                            })
-                        return results
+                        items = data.get('items', [])
+                        for item in items[:max_results]:
+                            if item.get('type') == 'stream':
+                                results.append({
+                                    'id': item.get('url', '').replace('/watch?v=', ''),
+                                    'title': item.get('title'),
+                                    'duration': item.get('duration', 0),
+                                    'thumbnail': item.get('thumbnail'),
+                                    'webpage_url': f"https://www.youtube.com{item.get('url')}"
+                                })
+                        if results:
+                            return results
             except Exception as e:
                 logger.warning(f"Failed to search on {instance}: {e}")
                 continue
         
-        raise Exception("All Invidious instances failed")
+        raise Exception("All Piped instances failed")
     
     async def get_video_info(self, video_id: str):
         """Get video information and stream URL"""
         session = await self.get_session()
         
-        for instance in INVIDIOUS_INSTANCES:
+        for instance in PIPED_INSTANCES:
             try:
-                url = f"{instance}/api/v1/videos/{video_id}"
+                url = f"{instance}/streams/{video_id}"
                 
                 async with session.get(url, timeout=10) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         
                         # หา audio stream ที่ดีที่สุด
-                        audio_formats = [f for f in data.get('adaptiveFormats', []) 
-                                       if f.get('type', '').startswith('audio/')]
+                        audio_streams = data.get('audioStreams', [])
                         
-                        if not audio_formats:
+                        if not audio_streams:
                             raise Exception("No audio stream found")
                         
                         # เรียงตาม bitrate
-                        audio_formats.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
-                        best_audio = audio_formats[0]
+                        audio_streams.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
+                        best_audio = audio_streams[0]
                         
                         return {
                             'id': video_id,
                             'title': data.get('title'),
                             'url': best_audio.get('url'),
-                            'duration': data.get('lengthSeconds', 0),
-                            'thumbnail': f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
+                            'duration': data.get('duration', 0),
+                            'thumbnail': data.get('thumbnailUrl'),
                             'webpage_url': f"https://www.youtube.com/watch?v={video_id}"
                         }
             except Exception as e:
                 logger.warning(f"Failed to get video info from {instance}: {e}")
                 continue
         
-        raise Exception("All Invidious instances failed")
+        raise Exception("All Piped instances failed")
     
     async def get_playlist(self, playlist_id: str):
         """Get playlist information"""
         session = await self.get_session()
         
-        for instance in INVIDIOUS_INSTANCES:
+        for instance in PIPED_INSTANCES:
             try:
-                url = f"{instance}/api/v1/playlists/{playlist_id}"
+                url = f"{instance}/playlists/{playlist_id}"
                 
                 async with session.get(url, timeout=15) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         videos = []
                         
-                        for video in data.get('videos', []):
+                        for video in data.get('relatedStreams', []):
+                            video_id = video.get('url', '').replace('/watch?v=', '')
                             videos.append({
-                                'id': video.get('videoId'),
+                                'id': video_id,
                                 'title': video.get('title'),
-                                'duration': video.get('lengthSeconds', 0),
-                                'thumbnail': f"https://i.ytimg.com/vi/{video.get('videoId')}/maxresdefault.jpg",
-                                'webpage_url': f"https://www.youtube.com/watch?v={video.get('videoId')}"
+                                'duration': video.get('duration', 0),
+                                'thumbnail': video.get('thumbnail'),
+                                'webpage_url': f"https://www.youtube.com/watch?v={video_id}"
                             })
                         
                         return {
-                            'title': data.get('title'),
+                            'title': data.get('name'),
                             'entries': videos
                         }
             except Exception as e:
                 logger.warning(f"Failed to get playlist from {instance}: {e}")
                 continue
         
-        raise Exception("All Invidious instances failed")
+        raise Exception("All Piped instances failed")
     
     async def extract_info(self, query: str, download=False):
         """Extract info from URL or search query (yt-dlp compatible interface)"""
@@ -199,8 +201,8 @@ class InvidiousAPI:
         return None
 
 # สร้าง instance
-invidious = InvidiousAPI()
-logger.info("Invidious API initialized (free YouTube alternative)")
+piped = PipedAPI()
+logger.info("Piped API initialized (free YouTube alternative)")
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
@@ -217,10 +219,10 @@ class YTDLSource(discord.PCMVolumeTransformer):
         loop = loop or asyncio.get_event_loop()
         
         try:
-            # ใช้ Invidious API แทน yt-dlp
-            data = await invidious.extract_info(url, download=not stream)
+            # ใช้ Piped API แทน yt-dlp
+            data = await piped.extract_info(url, download=not stream)
         except Exception as e:
-            logger.error(f"Invidious API Error for {url}: {e}")
+            logger.error(f"Piped API Error for {url}: {e}")
             return None
 
         if not data:
@@ -228,7 +230,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
         # Ensure we have a direct stream URL
         if 'url' not in data:
-            logger.error(f"No direct URL found in Invidious data for {data.get('title')}")
+            logger.error(f"No direct URL found in Piped data for {data.get('title')}")
             return None
 
         filename = data['url']
@@ -236,5 +238,5 @@ class YTDLSource(discord.PCMVolumeTransformer):
         
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_opts), data=data)
 
-# Export invidious instance for use in music_manager
-YTDL_INSTANCE = invidious
+# Export piped instance for use in music_manager
+YTDL_INSTANCE = piped
