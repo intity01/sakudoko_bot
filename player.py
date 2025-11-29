@@ -27,9 +27,9 @@ def get_ffmpeg_options(filter_name=None):
     }
 
 
-# ตั้งค่า yt-dlp แบบใหม่ - ใช้ Android client ไม่ต้อง cookies
+# ตั้งค่า yt-dlp - ใช้ android_embedded client + cookies (ถ้ามี)
 ytdl_format_options = {
-    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',  # ระบุ format ที่ต้องการชัดเจน
+    'format': 'bestaudio/best',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': False,
@@ -40,19 +40,24 @@ ytdl_format_options = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    'prefer_ffmpeg': True,  # ใช้ FFmpeg สำหรับ post-processing
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'best',
-    }],
-    # ใช้ Android client - ไม่โดน bot detection
+    'sleep_interval': 1,  # หน่วงเวลา 1 วินาทีระหว่างการดึงข้อมูล (ป้องกัน rate limit)
+    'max_sleep_interval': 3,
+    # ใช้ android_embedded client - หลีกเลี่ยง bot detection
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web'],
-            'player_skip': ['webpage', 'configs'],
+            'player_client': ['android_embedded'],
         }
     },
 }
+
+# ถ้าต้องการใช้ cookies เพื่อหลีกเลี่ยง rate limit ให้ตั้งค่า YTDLP_BROWSER ใน .env
+browser = os.getenv("YTDLP_BROWSER")
+if browser:
+    try:
+        ytdl_format_options['cookiesfrombrowser'] = (browser,)
+        logger.info(f"Using cookies from {browser} to avoid rate limits")
+    except Exception as e:
+        logger.warning(f"Could not load cookies from {browser}: {e}")
 
 # เพิ่ม proxy support จาก .env (ถ้ามี)
 proxy_url = os.getenv("YTDLP_PROXY")
@@ -61,7 +66,7 @@ if proxy_url:
     logger.info(f"Using proxy: {proxy_url}")
 
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
-logger.info("yt-dlp initialized with Android client (no cookies needed)")
+logger.info("yt-dlp initialized with android_embedded client (no cookies needed)")
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):  # เพิ่มเสียงจาก 0.3 เป็น 0.5 (50%)

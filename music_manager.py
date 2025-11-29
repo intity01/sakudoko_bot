@@ -400,9 +400,16 @@ class MusicManager:
             if vc and not vc.is_playing():
                 await self.play_next(channel)
 
+        except discord.errors.NotFound:
+            logger.warning(f"Channel not found when handling music request. Channel may have been deleted.")
+            # Channel was deleted, cleanup
+            await self.disconnect_and_cleanup(message.guild)
         except Exception as e:
             logger.error(f"Error handling music request: {e}")
-            await channel.send(embed=discord.Embed(title="Error", description=f"❌ เกิดข้อผิดพลาดในการประมวลผลคำขอ: {e}", color=0xff0000), delete_after=5)
+            try:
+                await channel.send(embed=discord.Embed(title="Error", description=f"❌ เกิดข้อผิดพลาดในการประมวลผลคำขอ: {e}", color=0xff0000), delete_after=5)
+            except discord.errors.NotFound:
+                logger.warning("Could not send error message, channel not found")
 
     # Add a method to handle voice state updates (e.g., bot disconnected manually)
     async def handle_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):

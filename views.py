@@ -97,6 +97,42 @@ class MusicControlView(discord.ui.View):
         embed = discord.Embed(title="แจ้งเตือน", description="ข้ามเพลงแล้ว!", color=0x0099ff)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @discord.ui.button(label="🔉 Vol-", style=discord.ButtonStyle.secondary)
+    async def volume_down(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_permission(interaction) or not await self._check_cooldown(interaction, cooldown=1):
+            return
+        
+        manager = self.get_manager()
+        vc = manager.voice_client
+        
+        if vc and vc.source:
+            current_volume = vc.source.volume
+            new_volume = max(0.0, current_volume - 0.1)  # ลดลง 10%, ต่ำสุด 0%
+            vc.source.volume = new_volume
+            embed = discord.Embed(title="🔉 ปรับระดับเสียง", description=f"ระดับเสียง: **{int(new_volume * 100)}%**", color=0x0099ff)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            embed = discord.Embed(title="Error", description="ไม่มีเพลงที่กำลังเล่น!", color=0xff0000)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🔊 Vol+", style=discord.ButtonStyle.secondary)
+    async def volume_up(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_permission(interaction) or not await self._check_cooldown(interaction, cooldown=1):
+            return
+        
+        manager = self.get_manager()
+        vc = manager.voice_client
+        
+        if vc and vc.source:
+            current_volume = vc.source.volume
+            new_volume = min(2.0, current_volume + 0.1)  # เพิ่มขึ้น 10%, สูงสุด 200%
+            vc.source.volume = new_volume
+            embed = discord.Embed(title="🔊 ปรับระดับเสียง", description=f"ระดับเสียง: **{int(new_volume * 100)}%**", color=0x0099ff)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            embed = discord.Embed(title="Error", description="ไม่มีเพลงที่กำลังเล่น!", color=0xff0000)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @discord.ui.button(label="🚪 Leave", style=discord.ButtonStyle.danger)
     async def leave(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check_permission(interaction) or not await self._check_cooldown(interaction):
