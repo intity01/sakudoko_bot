@@ -24,7 +24,7 @@ def get_ffmpeg_options(filter_name=None):
     }
 
 
-# ตั้งค่า yt-dlp
+# ตั้งค่า yt-dlp แบบใหม่ - ใช้ Android client ไม่ต้อง cookies
 ytdl_format_options = {
     'format': 'bestaudio/best',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
@@ -37,15 +37,23 @@ ytdl_format_options = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    'cookies': 'cookies.txt',
+    # ใช้ Android client - ไม่โดน bot detection
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web'],
+            'player_skip': ['webpage', 'configs'],
+        }
+    },
 }
 
-# เพิ่ม proxy support จาก .env
+# เพิ่ม proxy support จาก .env (ถ้ามี)
 proxy_url = os.getenv("YTDLP_PROXY")
 if proxy_url:
     ytdl_format_options['proxy'] = proxy_url
+    logger.info(f"Using proxy: {proxy_url}")
 
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
+logger.info("yt-dlp initialized with Android client (no cookies needed)")
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.3):

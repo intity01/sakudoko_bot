@@ -46,11 +46,12 @@ class MusicCog(commands.Cog):
             channel = interaction.user.voice.channel
             if interaction.guild.voice_client is None:
                 vc = await channel.connect()
-                # Mute the bot by default to prevent echo/feedback
-                if vc and hasattr(vc, 'self_mute'):
-                    await vc.guild.me.edit(mute=True)
+                # Deafen and mute the bot to prevent echo/feedback and hearing server audio
+                await interaction.guild.me.edit(mute=True, deafen=True)
             elif interaction.guild.voice_client.channel != channel:
                 await interaction.guild.voice_client.move_to(channel)
+                # Also deafen when moving
+                await interaction.guild.me.edit(mute=True, deafen=True)
 
             # Create/Get Music Room
             chat_name = f"{interaction.user.name.lower().replace(' ', '-')}-music-room"
@@ -105,7 +106,17 @@ class MusicCog(commands.Cog):
                 )
                 manager.music_channel_id = music_channel.id
                 
-                await music_channel.send(embed=embed, view=view)
+                # ปิดเสียงแจ้งเตือนของห้อง (suppress @everyone and @here)
+                try:
+                    await music_channel.edit(
+                        default_auto_archive_duration=60,
+                        # Set to only mentions (no all messages notifications)
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not edit channel notification settings: {e}")
+                
+                # ส่งข้อความแรกแบบ silent (suppress notifications)
+                await music_channel.send(embed=embed, view=view, silent=True)
                 await interaction.followup.send(f"✅ สร้างห้องแชท {music_channel.mention} แล้ว!", ephemeral=True)
                 
                 # Start cleanup task (moved to manager in main.py)
