@@ -279,9 +279,9 @@ class MusicCog(commands.Cog):
         
         # Add song to queue
         try:
-            # Extract info using ytdl
-            from player import ytdl
-            info = await self.bot.loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+            # Extract info using Invidious
+            from player import YTDL_INSTANCE as invidious
+            info = await invidious.extract_info(query, download=False)
             
             if not info:
                 await interaction.followup.send("❌ ไม่พบเพลงหรือวิดีโอจากคำค้นนี้", ephemeral=True)

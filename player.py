@@ -32,8 +32,9 @@ def get_ffmpeg_options(filter_name=None):
 INVIDIOUS_INSTANCES = [
     "https://inv.nadeko.net",
     "https://invidious.private.coffee",
-    "https://yt.artemislena.eu",
-    "https://invidious.protokolla.fi",
+    "https://iv.nboeck.de",
+    "https://invidious.fdn.fr",
+    "https://inv.tux.pizza",
     "https://invidious.perennialte.ch",
 ]
 
