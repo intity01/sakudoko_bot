@@ -1,8 +1,10 @@
 import discord
-import yt_dlp
 import asyncio
 import os
 import logging
+import aiohttp
+import random
+import re
 
 logger = logging.getLogger('discord_bot')
 
@@ -26,102 +28,212 @@ def get_ffmpeg_options(filter_name=None):
         'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
     }
 
+# Invidious instances (ฟรี 100%)
+INVIDIOUS_INSTANCES = [
+    "https://inv.nadeko.net",
+    "https://invidious.private.coffee",
+    "https://yt.artemislena.eu",
+    "https://invidious.protokolla.fi",
+    "https://invidious.perennialte.ch",
+]
 
-# ตั้งค่า yt-dlp - ใช้ android_embedded client + cookies (ถ้ามี)
-ytdl_format_options = {
-    'format': 'bestaudio/best',
-    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
-    'restrictfilenames': True,
-    'noplaylist': False,
-    'nocheckcertificate': True,
-    'ignoreerrors': False,
-    'logtostderr': False,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-    'source_address': '0.0.0.0',
-    'sleep_interval': 1,  # หน่วงเวลา 1 วินาทีระหว่างการดึงข้อมูล (ป้องกัน rate limit)
-    'max_sleep_interval': 3,
-    # ใช้ android_embedded client - หลีกเลี่ยง bot detection
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android_embedded'],
-        }
-    },
-}
+class InvidiousAPI:
+    """Wrapper for Invidious API to fetch YouTube data"""
+    
+    def __init__(self):
+        self.current_instance = random.choice(INVIDIOUS_INSTANCES)
+        self.session = None
+    
+    async def get_session(self):
+        """Get or create aiohttp session"""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def close(self):
+        """Close aiohttp session"""
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    def extract_video_id(self, url: str):
+        """Extract video ID from YouTube URL"""
+        patterns = [
+            r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+            r'youtube\.com\/embed\/([a-zA-Z0-9_-]{11})',
+            r'^([a-zA-Z0-9_-]{11})$'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
+    
+    def extract_playlist_id(self, url: str):
+        """Extract playlist ID from YouTube URL"""
+        match = re.search(r'[?&]list=([a-zA-Z0-9_-]+)', url)
+        if match:
+            return match.group(1)
+        return None
+    
+    async def search(self, query: str, max_results: int = 1):
+        """Search for videos on YouTube via Invidious"""
+        session = await self.get_session()
+        
+        for instance in INVIDIOUS_INSTANCES:
+            try:
+                url = f"{instance}/api/v1/search"
+                params = {
+                    'q': query,
+                    'type': 'video',
+                    'sort_by': 'relevance'
+                }
+                
+                async with session.get(url, params=params, timeout=10) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        results = []
+                        for item in data[:max_results]:
+                            results.append({
+                                'id': item.get('videoId'),
+                                'title': item.get('title'),
+                                'duration': item.get('lengthSeconds', 0),
+                                'thumbnail': f"https://i.ytimg.com/vi/{item.get('videoId')}/maxresdefault.jpg",
+                                'webpage_url': f"https://www.youtube.com/watch?v={item.get('videoId')}"
+                            })
+                        return results
+            except Exception as e:
+                logger.warning(f"Failed to search on {instance}: {e}")
+                continue
+        
+        raise Exception("All Invidious instances failed")
+    
+    async def get_video_info(self, video_id: str):
+        """Get video information and stream URL"""
+        session = await self.get_session()
+        
+        for instance in INVIDIOUS_INSTANCES:
+            try:
+                url = f"{instance}/api/v1/videos/{video_id}"
+                
+                async with session.get(url, timeout=10) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        
+                        # หา audio stream ที่ดีที่สุด
+                        audio_formats = [f for f in data.get('adaptiveFormats', []) 
+                                       if f.get('type', '').startswith('audio/')]
+                        
+                        if not audio_formats:
+                            raise Exception("No audio stream found")
+                        
+                        # เรียงตาม bitrate
+                        audio_formats.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
+                        best_audio = audio_formats[0]
+                        
+                        return {
+                            'id': video_id,
+                            'title': data.get('title'),
+                            'url': best_audio.get('url'),
+                            'duration': data.get('lengthSeconds', 0),
+                            'thumbnail': f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
+                            'webpage_url': f"https://www.youtube.com/watch?v={video_id}"
+                        }
+            except Exception as e:
+                logger.warning(f"Failed to get video info from {instance}: {e}")
+                continue
+        
+        raise Exception("All Invidious instances failed")
+    
+    async def get_playlist(self, playlist_id: str):
+        """Get playlist information"""
+        session = await self.get_session()
+        
+        for instance in INVIDIOUS_INSTANCES:
+            try:
+                url = f"{instance}/api/v1/playlists/{playlist_id}"
+                
+                async with session.get(url, timeout=15) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        videos = []
+                        
+                        for video in data.get('videos', []):
+                            videos.append({
+                                'id': video.get('videoId'),
+                                'title': video.get('title'),
+                                'duration': video.get('lengthSeconds', 0),
+                                'thumbnail': f"https://i.ytimg.com/vi/{video.get('videoId')}/maxresdefault.jpg",
+                                'webpage_url': f"https://www.youtube.com/watch?v={video.get('videoId')}"
+                            })
+                        
+                        return {
+                            'title': data.get('title'),
+                            'entries': videos
+                        }
+            except Exception as e:
+                logger.warning(f"Failed to get playlist from {instance}: {e}")
+                continue
+        
+        raise Exception("All Invidious instances failed")
+    
+    async def extract_info(self, query: str, download=False):
+        """Extract info from URL or search query (yt-dlp compatible interface)"""
+        # ตรวจสอบว่าเป็น playlist หรือไม่
+        playlist_id = self.extract_playlist_id(query)
+        if playlist_id:
+            return await self.get_playlist(playlist_id)
+        
+        # ตรวจสอบว่าเป็น video URL หรือไม่
+        video_id = self.extract_video_id(query)
+        if video_id:
+            return await self.get_video_info(video_id)
+        
+        # ถ้าไม่ใช่ URL ให้ search
+        results = await self.search(query, max_results=1)
+        if results:
+            video_id = results[0]['id']
+            return await self.get_video_info(video_id)
+        
+        return None
 
-# ถ้าต้องการใช้ cookies เพื่อหลีกเลี่ยง rate limit ให้ตั้งค่า YTDLP_BROWSER ใน .env
-browser = os.getenv("YTDLP_BROWSER")
-if browser:
-    try:
-        ytdl_format_options['cookiesfrombrowser'] = (browser,)
-        logger.info(f"Using cookies from {browser} to avoid rate limits")
-    except Exception as e:
-        logger.warning(f"Could not load cookies from {browser}: {e}")
-
-# เพิ่ม proxy support จาก .env (ถ้ามี)
-proxy_url = os.getenv("YTDLP_PROXY")
-if proxy_url:
-    ytdl_format_options['proxy'] = proxy_url
-    logger.info(f"Using proxy: {proxy_url}")
-
-ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
-logger.info("yt-dlp initialized with android_embedded client (no cookies needed)")
+# สร้าง instance
+invidious = InvidiousAPI()
+logger.info("Invidious API initialized (free YouTube alternative)")
 
 class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data, volume=0.5):  # เพิ่มเสียงจาก 0.3 เป็น 0.5 (50%)
+    def __init__(self, source, *, data, volume=0.5):
         super().__init__(source, volume)
         self.data = data
         self.title = data.get('title')
         self.url = data.get('url')
         self.webpage_url = data.get('webpage_url')
         self.duration = data.get('duration')
+        self.thumbnail = data.get('thumbnail')
 
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False, filter_name=None):
         loop = loop or asyncio.get_event_loop()
         
-        # Use a search prefix if the URL doesn't look like a URL
-        if not url.startswith(('http://', 'https://')):
-            url = f"ytsearch:{url}"
-
         try:
-            # Blocking call, run in executor
-            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
-        except yt_dlp.DownloadError as e:
-            logger.error(f"YTDL Download Error for {url}: {e}")
-            return None
+            # ใช้ Invidious API แทน yt-dlp
+            data = await invidious.extract_info(url, download=not stream)
         except Exception as e:
-            logger.error(f"General YTDL Error for {url}: {e}")
+            logger.error(f"Invidious API Error for {url}: {e}")
             return None
-
-        if not data:
-            return None
-
-        # If it's a search result, take the first entry
-        if 'entries' in data:
-            # If it's a search, take the first result
-            if url.startswith('ytsearch:'):
-                data = data['entries'][0] if data['entries'] else None
-            # If it's a playlist, the caller (MusicManager) should handle it
-            else:
-                # This case should ideally not be reached if MusicManager handles playlists
-                # but as a fallback, we take the first entry for playback
-                data = data['entries'][0] if data['entries'] else None
 
         if not data:
             return None
 
         # Ensure we have a direct stream URL
         if 'url' not in data:
-            logger.error(f"No direct URL found in YTDL data for {data.get('title')}")
+            logger.error(f"No direct URL found in Invidious data for {data.get('title')}")
             return None
 
-        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        filename = data['url']
         ffmpeg_opts = get_ffmpeg_options(filter_name)
         
-        # Use the correct executable if specified, otherwise rely on system path
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_opts), data=data)
 
-# Export ytdl instance for use in music_manager for search/playlist extraction
-YTDL_INSTANCE = ytdl
+# Export invidious instance for use in music_manager
+YTDL_INSTANCE = invidious
