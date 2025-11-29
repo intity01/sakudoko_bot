@@ -34,6 +34,7 @@ class MusicManager:
         self.owner_id: Optional[int] = None # The user who started the room
         self.selected_filter: Optional[str] = None
         self.last_activity_time: float = time.time()
+        self.warning_sent: bool = False  # Flag to prevent duplicate warnings
         self.cleanup_task = self.cleanup_check.start()
 
     @property
@@ -58,8 +59,8 @@ class MusicManager:
         if vc and not vc.is_playing() and not self.queue:
             time_since_last_activity = time.time() - self.last_activity_time
             
-            # แจ้งเตือนเมื่อเหลือเวลา 1 นาที
-            if time_since_last_activity > TIMEOUT_SECONDS - 60 and time_since_last_activity < TIMEOUT_SECONDS:
+            # แจ้งเตือนเมื่อเหลือเวลา 1 นาที (แจ้งครั้งเดียว)
+            if time_since_last_activity > TIMEOUT_SECONDS - 60 and not self.warning_sent:
                 channel = self.get_text_channel()
                 if channel:
                     try:
@@ -69,6 +70,7 @@ class MusicManager:
                             color=0xffcc00
                         )
                         await channel.send(embed=embed, delete_after=60)
+                        self.warning_sent = True
                     except Exception:
                         pass
             
@@ -82,13 +84,15 @@ class MusicManager:
                     if self.guild_id in self.bot.managers:
                         del self.bot.managers[self.guild_id]
                 self.cleanup_task.cancel()
+        else:
+            # Reset warning flag เมื่อมีเพลงเล่นหรือมีคิว
+            self.warning_sent = False
 
     def start_cleanup_task(self, guild: discord.Guild):
         """Starts the cleanup task when the room is created."""
         self.last_activity_time = time.time()
-        # Check if task is not already running
-        if self.cleanup_task is None or self.cleanup_task.done():
-            self.cleanup_task = asyncio.create_task(self._cleanup_loop(guild))
+        # Cleanup task already started in __init__ with @tasks.loop decorator
+        # No need to create additional task
 
     async def fade_volume(self, start: float, end: float, duration: float = 2.0, steps: int = 20):
         """Fades the volume of the current player source."""
@@ -105,7 +109,8 @@ class MusicManager:
 
     async def play_next(self, channel: discord.TextChannel):
         """Plays the next song in the queue."""
-        self.last_activity_time = time.time()
+        self.last_activity_time = time.time()  # Reset timeout เมื่อเริ่มเล่นเพลง
+        self.warning_sent = False  # Reset warning flag
         vc = self.voice_client
         
         if not vc:
@@ -174,8 +179,8 @@ class MusicManager:
                     if self.queue or self.auto_play:
                         asyncio.run_coroutine_threadsafe(self.play_next(channel), self.bot.loop)
                     else:
-                        logger.info(f"Queue finished for guild {self.guild_id}. Starting cleanup check.")
-                        self.last_activity_time = time.time()
+                        # เพลงจบและคิวว่าง - เริ่มนับเวลา timeout (ไม่ reset!)
+                        logger.info(f"Queue finished for guild {self.guild_id}. Timeout countdown started.")
                 else:
                     logger.info(f"Voice client disconnected for guild {self.guild_id}. Stopping playback.")
 
@@ -266,7 +271,8 @@ class MusicManager:
     def add_to_queue(self, urls: List[str]):
         """Adds a list of URLs to the queue."""
         self.queue.extend(urls)
-        self.last_activity_time = time.time()
+        self.last_activity_time = time.time()  # Reset timeout เมื่อเพิ่มเพลง
+        self.warning_sent = False  # Reset warning flag
 
     def remove_from_queue(self, index: int) -> Optional[str]:
         """Removes a song from the queue by index (1-based)."""

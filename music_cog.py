@@ -272,6 +272,11 @@ class MusicCog(commands.Cog):
             await interaction.followup.send("❌ บอทยังไม่ได้เข้าห้องเสียง! ใช้ `/join` ก่อน", ephemeral=True)
             return
         
+        # Check if user is in the same voice channel as bot
+        if not self.is_in_voice_with_bot(interaction):
+            await interaction.followup.send("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
+            return
+        
         # Check if music room exists
         if not manager.music_channel_id:
             await interaction.followup.send("❌ ยังไม่มีห้องแชทเพลง! ใช้ `/join` ก่อน", ephemeral=True)
@@ -323,7 +328,9 @@ class MusicCog(commands.Cog):
             # Start playing if not already playing
             vc = interaction.guild.voice_client
             if vc and not vc.is_playing():
-                await manager.play_next_song()
+                channel = interaction.guild.get_channel(manager.music_channel_id)
+                if channel:
+                    await manager.play_next(channel)
                 
         except Exception as e:
             logger.error(f"Error adding song to queue: {e}")

@@ -329,7 +329,6 @@ async def on_message(message: discord.Message):
 
         # Music Room Logic
         if manager.music_channel_id == message.channel.id:
-            manager.last_activity_time = now
             content = message.content.strip()
             
             # Permission Check - ต้องอยู่ในห้องเสียงเดียวกับบอท
