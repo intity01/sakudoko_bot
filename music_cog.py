@@ -31,27 +31,27 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="join", description="ให้บอทเข้าห้องเสียงและสร้างห้องแชทส่วนตัวสำหรับผู้ใช้")
     async def join(self, interaction):
+        # Defer IMMEDIATELY before any checks to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+        
         manager = self.bot.get_manager(interaction.guild_id)
         
-        # Check voice channel first
+        # Check voice channel
         if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงก่อน!", ephemeral=True)
+            await interaction.followup.send("❌ คุณต้องอยู่ในห้องเสียงก่อน!", ephemeral=True)
             return
-        
-        # Defer immediately for long operations
-        await interaction.response.defer(ephemeral=True)
         
         try:
             # Connect to voice channel
             channel = interaction.user.voice.channel
             if interaction.guild.voice_client is None:
                 vc = await channel.connect()
-                # Deafen and mute the bot to prevent echo/feedback and hearing server audio
-                await interaction.guild.me.edit(mute=True, deafen=True)
+                # เปิดไมค์ แต่ปิดหูฟังแบบ server เพื่อประหยัด bandwidth
+                await interaction.guild.me.edit(mute=False, deafen=True)
             elif interaction.guild.voice_client.channel != channel:
                 await interaction.guild.voice_client.move_to(channel)
-                # Also deafen when moving
-                await interaction.guild.me.edit(mute=True, deafen=True)
+                # เปิดไมค์ แต่ปิดหูฟังแบบ server
+                await interaction.guild.me.edit(mute=False, deafen=True)
 
             # Create/Get Music Room
             chat_name = f"{interaction.user.name.lower().replace(' ', '-')}-music-room"
@@ -141,11 +141,13 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="leave", description="ให้บอทออกจากห้องเสียงและลบห้องแชทเพลง")
     async def leave(self, interaction):
+        # Defer immediately
+        await interaction.response.defer(ephemeral=True)
+        
         if not self.is_owner_or_admin(interaction):
-            await interaction.response.send_message("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+            await interaction.followup.send("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
             return
         manager = self.bot.get_manager(interaction.guild_id)
-        await interaction.response.defer(ephemeral=True)
         
         await manager.disconnect_and_cleanup(interaction.guild)
         
@@ -228,33 +230,34 @@ class MusicCog(commands.Cog):
     @app_commands.describe(query="ชื่อเพลงหรือ YouTube URL")
     async def play(self, interaction: "discord.Interaction", query: str):
         """Play a song from YouTube"""
+        # Defer immediately to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+        
         manager = self.bot.get_manager(interaction.guild_id)
         
         # Check if user is in voice channel
         if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงก่อน! ใช้ `/join` เพื่อเข้าห้องเสียง", ephemeral=True)
+            await interaction.followup.send("❌ คุณต้องอยู่ในห้องเสียงก่อน! ใช้ `/join` เพื่อเข้าห้องเสียง", ephemeral=True)
             return
         
         # Check if bot is connected
         if not interaction.guild.voice_client:
-            await interaction.response.send_message("❌ บอทยังไม่ได้เข้าห้องเสียง! ใช้ `/join` ก่อน", ephemeral=True)
+            await interaction.followup.send("❌ บอทยังไม่ได้เข้าห้องเสียง! ใช้ `/join` ก่อน", ephemeral=True)
             return
         
         # Check if music room exists
         if not manager.music_channel_id:
-            await interaction.response.send_message("❌ ยังไม่มีห้องแชทเพลง! ใช้ `/join` ก่อน", ephemeral=True)
+            await interaction.followup.send("❌ ยังไม่มีห้องแชทเพลง! ใช้ `/join` ก่อน", ephemeral=True)
             return
         
         # Check if user is in the music room
         music_channel = interaction.guild.get_channel(manager.music_channel_id)
         if music_channel and interaction.channel_id != manager.music_channel_id:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ คุณต้องใช้คำสั่งนี้ในห้องแชทเพลง {music_channel.mention} เท่านั้น!",
                 ephemeral=True
             )
             return
-        
-        await interaction.response.defer(ephemeral=True)
         
         # Add song to queue
         try:
