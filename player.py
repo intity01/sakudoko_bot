@@ -15,9 +15,12 @@ def get_ffmpeg_options(filter_name=None):
         'pitch': 'asetrate=44100*1.15,aresample=44100',
     }
     filter_str = filter_map.get(filter_name)
-    options = '-vn'
+    
+    # ปรับปรุงคุณภาพเสียง: เพิ่ม bitrate และ audio codec
+    options = '-vn -b:a 128k'  # 128kbps audio bitrate (เพิ่มคุณภาพ)
     if filter_str:
         options += f' -af "{filter_str}"'
+    
     return {
         'options': options,
         'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
@@ -26,7 +29,7 @@ def get_ffmpeg_options(filter_name=None):
 
 # ตั้งค่า yt-dlp แบบใหม่ - ใช้ Android client ไม่ต้อง cookies
 ytdl_format_options = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',  # ระบุ format ที่ต้องการชัดเจน
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': False,
@@ -37,6 +40,11 @@ ytdl_format_options = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
+    'prefer_ffmpeg': True,  # ใช้ FFmpeg สำหรับ post-processing
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'best',
+    }],
     # ใช้ Android client - ไม่โดน bot detection
     'extractor_args': {
         'youtube': {
@@ -56,7 +64,7 @@ ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 logger.info("yt-dlp initialized with Android client (no cookies needed)")
 
 class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data, volume=0.3):
+    def __init__(self, source, *, data, volume=0.5):  # เพิ่มเสียงจาก 0.3 เป็น 0.5 (50%)
         super().__init__(source, volume)
         self.data = data
         self.title = data.get('title')

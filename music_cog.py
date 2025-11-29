@@ -32,7 +32,15 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="join", description="ให้บอทเข้าห้องเสียงและสร้างห้องแชทส่วนตัวสำหรับผู้ใช้")
     async def join(self, interaction):
         # Defer IMMEDIATELY before any checks to prevent timeout
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning("Interaction expired before deferring")
+            return
+        except Exception as e:
+            logger.error(f"Error deferring interaction: {e}")
+            return
         
         manager = self.bot.get_manager(interaction.guild_id)
         
@@ -142,7 +150,12 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="leave", description="ให้บอทออกจากห้องเสียงและลบห้องแชทเพลง")
     async def leave(self, interaction):
         # Defer immediately
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error deferring interaction: {e}")
+            return
         
         if not self.is_owner_or_admin(interaction):
             await interaction.followup.send("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
@@ -231,7 +244,12 @@ class MusicCog(commands.Cog):
     async def play(self, interaction: "discord.Interaction", query: str):
         """Play a song from YouTube"""
         # Defer immediately to prevent timeout
-        await interaction.response.defer(ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error deferring interaction: {e}")
+            return
         
         manager = self.bot.get_manager(interaction.guild_id)
         
@@ -261,8 +279,43 @@ class MusicCog(commands.Cog):
         
         # Add song to queue
         try:
-            await manager.add_to_queue(query, interaction.user)
-            await interaction.followup.send(f"✅ เพิ่มเพลง **{query}** ในคิวแล้ว!", ephemeral=True)
+            # Extract info using ytdl
+            from player import ytdl
+            info = await self.bot.loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+            
+            if not info:
+                await interaction.followup.send("❌ ไม่พบเพลงหรือวิดีโอจากคำค้นนี้", ephemeral=True)
+                return
+
+            urls_to_add = []
+            if 'entries' in info:
+                # Handle playlist
+                for entry in info['entries']:
+                    if entry and 'webpage_url' in entry:
+                        urls_to_add.append(entry['webpage_url'])
+                
+                if urls_to_add:
+                    manager.add_to_queue(urls_to_add)
+                    await interaction.followup.send(f"✅ เพิ่ม **{len(urls_to_add)}** เพลงจากเพลย์ลิสต์ลงในคิว", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ ไม่พบเพลงในเพลย์ลิสต์นี้", ephemeral=True)
+                    return
+            else:
+                # Handle single track
+                url = info.get('webpage_url')
+                title = info.get('title', 'Unknown Song')
+                if url:
+                    manager.add_to_queue([url])
+                    await interaction.followup.send(f"✅ เพิ่มเพลง **{title}** ในคิวแล้ว!", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ ไม่สามารถดึง URL ของเพลงได้", ephemeral=True)
+                    return
+
+            # Start playing if not already playing
+            vc = interaction.guild.voice_client
+            if vc and not vc.is_playing():
+                await manager.play_next_song()
+                
         except Exception as e:
             logger.error(f"Error adding song to queue: {e}")
             await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {str(e)}", ephemeral=True)
