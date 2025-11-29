@@ -16,7 +16,7 @@ NOW_PLAYING_COLOR = int(os.getenv("NOW_PLAYING_COLOR", "0x0099ff"), 16)
 EMBED_THUMBNAIL = os.getenv("EMBED_THUMBNAIL", "https://cdn-icons-png.flaticon.com/512/727/727245.png")
 EMBED_FOOTER_TEXT = os.getenv("EMBED_FOOTER_TEXT", "Sakudoko Music Bot | Enjoy your music!")
 EMBED_FOOTER_ICON = os.getenv("EMBED_FOOTER_ICON", "https://cdn-icons-png.flaticon.com/512/727/727245.png")
-TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "1800")) # 30 minutes
+TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "300")) # 5 minutes (300 seconds)
 
 class MusicManager:
     """
@@ -49,12 +49,32 @@ class MusicManager:
                 return guild.get_channel(self.music_channel_id)
         return None
 
-    @tasks.loop(seconds=60.0)
+    @tasks.loop(seconds=30.0)
     async def cleanup_check(self):
-        """Checks for inactivity and cleans up the room."""
-        if self.voice_client and not self.voice_client.is_playing() and not self.queue:
-            if time.time() - self.last_activity_time > TIMEOUT_SECONDS:
-                logger.info(f"Inactivity timeout for guild {self.guild_id}. Cleaning up.")
+        """Checks for inactivity and cleans up the room after 5 minutes of no music."""
+        vc = self.voice_client
+        
+        # ตรวจสอบว่าไม่มีเพลงเล่นและคิวว่าง
+        if vc and not vc.is_playing() and not self.queue:
+            time_since_last_activity = time.time() - self.last_activity_time
+            
+            # แจ้งเตือนเมื่อเหลือเวลา 1 นาที
+            if time_since_last_activity > TIMEOUT_SECONDS - 60 and time_since_last_activity < TIMEOUT_SECONDS:
+                channel = self.get_text_channel()
+                if channel:
+                    try:
+                        embed = discord.Embed(
+                            title="⏰ แจ้งเตือน", 
+                            description="บอทจะออกจากห้องใน 1 นาที หากไม่มีการเล่นเพลง", 
+                            color=0xffcc00
+                        )
+                        await channel.send(embed=embed, delete_after=60)
+                    except Exception:
+                        pass
+            
+            # ปิดห้องเมื่อครบเวลา
+            if time_since_last_activity > TIMEOUT_SECONDS:
+                logger.info(f"Inactivity timeout ({TIMEOUT_SECONDS}s) for guild {self.guild_id}. Cleaning up.")
                 guild = self.bot.get_guild(self.guild_id)
                 if guild:
                     await self.disconnect_and_cleanup(guild)
@@ -118,7 +138,7 @@ class MusicManager:
                     logger.error(f"Auto Play failed: {e}")
             
             # Queue is truly empty
-            embed = discord.Embed(title="Queue Empty", description="🎶 คิวเพลงหมดแล้ว! บอทจะออกจากห้องใน 30 นาทีหากไม่มีกิจกรรม", color=0xffcc00)
+            embed = discord.Embed(title="Queue Empty", description="🎶 คิวเพลงหมดแล้ว! บอทจะออกจากห้องใน 5 นาทีหากไม่มีการเล่นเพลง", color=0xffcc00)
             await channel.send(embed=embed)
             return
 

@@ -329,17 +329,21 @@ async def on_message(message: discord.Message):
 
         # Music Room Logic
         if manager.music_channel_id == message.channel.id:
-            # Permission Check
-            if manager.owner_id and message.author.id != manager.owner_id and not bot.is_admin(message.author):
-                try: await message.delete()
-                except Exception: pass
-                return
-
             manager.last_activity_time = now
             content = message.content.strip()
             
+            # Permission Check - ต้องอยู่ในห้องเสียงเดียวกับบอท
             if not message.author.voice or not message.author.voice.channel:
-                embed = discord.Embed(title="Error", description="คุณต้องอยู่ในห้องเสียงก่อน!", color=0xff0000)
+                embed = discord.Embed(title="Error", description="❌ คุณต้องอยู่ในห้องเสียงก่อน!", color=0xff0000)
+                await message.channel.send(embed=embed, delete_after=5)
+                try: await message.delete()
+                except Exception: pass
+                return
+            
+            # ตรวจสอบว่าอยู่ห้องเดียวกับบอทหรือไม่
+            vc = message.guild.voice_client
+            if vc and vc.channel and message.author.voice.channel.id != vc.channel.id:
+                embed = discord.Embed(title="Error", description="❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", color=0xff0000)
                 await message.channel.send(embed=embed, delete_after=5)
                 try: await message.delete()
                 except Exception: pass

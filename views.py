@@ -29,16 +29,26 @@ class MusicControlView(discord.ui.View):
         return self.bot.get_manager(self.server_id)
 
     async def _check_permission(self, interaction: discord.Interaction):
+        """ตรวจสอบว่าผู้ใช้อยู่ในห้องเสียงเดียวกับบอทหรือไม่"""
         manager = self.get_manager()
-        is_owner = interaction.user.id == manager.owner_id
-        is_admin = interaction.user.guild_permissions.administrator
         
-        if not (is_owner or is_admin):
+        # ตรวจสอบว่าผู้ใช้อยู่ในห้องเสียงหรือไม่
+        if not interaction.user.voice or not interaction.user.voice.channel:
             if not interaction.response.is_done():
                 await interaction.response.defer(ephemeral=True)
-            embed = discord.Embed(title="❌ ไม่มีสิทธิ์", description="คุณไม่ใช่เจ้าของห้องหรือแอดมิน", color=0xff0000)
+            embed = discord.Embed(title="❌ ไม่มีสิทธิ์", description="คุณต้องอยู่ในห้องเสียงก่อน!", color=0xff0000)
             await interaction.followup.send(embed=embed, ephemeral=True)
             return False
+        
+        # ตรวจสอบว่าอยู่ห้องเดียวกับบอทหรือไม่
+        vc = manager.voice_client
+        if vc and vc.channel and interaction.user.voice.channel.id != vc.channel.id:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+            embed = discord.Embed(title="❌ ไม่มีสิทธิ์", description="คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", color=0xff0000)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return False
+        
         return True
 
     async def _check_cooldown(self, interaction: discord.Interaction, cooldown: int = 2):

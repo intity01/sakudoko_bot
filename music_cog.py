@@ -11,20 +11,29 @@ class MusicCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def is_owner_or_admin(self, interaction):
-        """Checks if the user is the room owner or a server administrator."""
+    def is_in_voice_with_bot(self, interaction):
+        """Checks if the user is in the same voice channel as the bot."""
         server_id = interaction.guild_id
         manager = self.bot.get_manager(server_id)
-        # Check if the user is the owner, or if the user is an admin
-        return interaction.user.id == manager.owner_id or interaction.user.guild_permissions.administrator
+        
+        # ตรวจสอบว่าผู้ใช้อยู่ในห้องเสียงหรือไม่
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            return False
+        
+        # ตรวจสอบว่าอยู่ห้องเดียวกับบอทหรือไม่
+        vc = manager.voice_client
+        if vc and vc.channel and interaction.user.voice.channel.id != vc.channel.id:
+            return False
+        
+        return True
 
-    def require_owner_or_admin(self, func):
-        """Decorator to enforce owner/admin permission for slash commands."""
+    def require_in_voice(self, func):
+        """Decorator to enforce voice channel permission for slash commands."""
         import functools
         @functools.wraps(func)
         async def wrapper(interaction, *args, **kwargs):
-            if not self.is_owner_or_admin(interaction):
-                await interaction.response.send_message("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+            if not self.is_in_voice_with_bot(interaction):
+                await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
                 return
             return await func(interaction, *args, **kwargs)
         return wrapper
@@ -157,8 +166,8 @@ class MusicCog(commands.Cog):
             logger.error(f"Error deferring interaction: {e}")
             return
         
-        if not self.is_owner_or_admin(interaction):
-            await interaction.followup.send("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+        if not self.is_in_voice_with_bot(interaction):
+            await interaction.followup.send("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
             return
         manager = self.bot.get_manager(interaction.guild_id)
         
@@ -179,8 +188,8 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="remove", description="ลบเพลงออกจากคิว")
     @app_commands.describe(index="ลำดับของเพลงในคิวที่จะลบ (1-based)")
     async def remove(self, interaction: "discord.Interaction", index: int):
-        if not self.is_owner_or_admin(interaction):
-            await interaction.response.send_message("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+        if not self.is_in_voice_with_bot(interaction):
+            await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
             return
         manager = self.bot.get_manager(interaction.guild_id)
         removed_url = manager.remove_from_queue(index)
@@ -192,8 +201,8 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="shuffle", description="สุ่มลำดับเพลงในคิว")
     async def shuffle(self, interaction):
-        if not self.is_owner_or_admin(interaction):
-            await interaction.response.send_message("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+        if not self.is_in_voice_with_bot(interaction):
+            await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
             return
         manager = self.bot.get_manager(interaction.guild_id)
         if manager.shuffle_queue():
@@ -203,8 +212,8 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="loop", description="เปิด/ปิดการเล่นซ้ำคิวเพลง")
     async def loop(self, interaction):
-        if not self.is_owner_or_admin(interaction):
-            await interaction.response.send_message("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+        if not self.is_in_voice_with_bot(interaction):
+            await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
             return
         manager = self.bot.get_manager(interaction.guild_id)
         status = "เปิด" if manager.toggle_loop() else "ปิด"
@@ -212,8 +221,8 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(name="autoplay", description="เปิด/ปิดโหมดเล่นเพลงอัตโนมัติเมื่อคิวหมด")
     async def autoplay(self, interaction):
-        if not self.is_owner_or_admin(interaction):
-            await interaction.response.send_message("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+        if not self.is_in_voice_with_bot(interaction):
+            await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
             return
         manager = self.bot.get_manager(interaction.guild_id)
         manager.auto_play = not manager.auto_play
@@ -223,8 +232,8 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="filter", description="ตั้งค่า filter/effect ให้กับเพลง")
     @app_commands.describe(filter_name="ชื่อ filter (เช่น bass, nightcore, pitch) หรือ 'none' เพื่อปิด")
     async def filter(self, interaction: "discord.Interaction", filter_name: Literal['none', 'bass', 'nightcore', 'pitch']):
-        if not self.is_owner_or_admin(interaction):
-            await interaction.response.send_message("คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (เฉพาะผู้ใช้คนแรกหรือแอดมิน)", ephemeral=True)
+        if not self.is_in_voice_with_bot(interaction):
+            await interaction.response.send_message("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
             return
         manager = self.bot.get_manager(interaction.guild_id)
         
