@@ -98,24 +98,30 @@ class MusicCog(commands.Cog):
             view = RequestFirstSongView()
             
             if not existing:
-                # Create a new channel with suppressed notifications
+                # Create a new channel - ให้ทุกคนในห้องเสียงเห็นและใช้งานได้
+                voice_channel = interaction.user.voice.channel
                 overwrites = {
                     interaction.guild.default_role: discord.PermissionOverwrite(
-                        read_messages=False, 
+                        read_messages=False,  # คนนอกห้องเสียงไม่เห็น
                         send_messages=False,
-                        mention_everyone=False  # ปิดการ mention @everyone
-                    ),
-                    interaction.user: discord.PermissionOverwrite(
-                        read_messages=True, 
-                        send_messages=True,
-                        mention_everyone=False  # ปิดการ mention @everyone สำหรับ owner ด้วย
+                        mention_everyone=False
                     ),
                     interaction.guild.me: discord.PermissionOverwrite(
                         read_messages=True,
                         send_messages=True,
-                        mention_everyone=False  # ปิดการ mention @everyone สำหรับ bot
+                        mention_everyone=False
                     )
                 }
+                
+                # เพิ่ม permission สำหรับทุกคนที่อยู่ในห้องเสียง
+                for member in voice_channel.members:
+                    if not member.bot:  # ไม่รวม bot อื่น
+                        overwrites[member] = discord.PermissionOverwrite(
+                            read_messages=True,
+                            send_messages=True,
+                            mention_everyone=False
+                        )
+                
                 music_channel = await interaction.guild.create_text_channel(
                     chat_name, 
                     overwrites=overwrites, 

@@ -376,12 +376,44 @@ async def on_error(event_method, *args, **kwargs):
 
 @bot.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    guild_id = member.guild.id
+    manager = bot.get_manager(guild_id)
+    
     # Check if the bot itself is the one whose voice state changed
     if member.id == bot.user.id:
-        guild_id = member.guild.id
-        manager = bot.get_manager(guild_id)
         # Delegate the handling to the manager
         await manager.handle_voice_state_update(member, before, after)
+        return
+    
+    # อัพเดท permissions ของห้องแชทเมื่อมีคนเข้า/ออกห้องเสียง
+    if manager.music_channel_id:
+        music_channel = member.guild.get_channel(manager.music_channel_id)
+        vc = manager.voice_client
+        
+        if music_channel and vc and vc.channel:
+            # คนเข้าห้องเสียงที่บอทอยู่
+            if after.channel and after.channel.id == vc.channel.id and not member.bot:
+                try:
+                    await music_channel.set_permissions(
+                        member,
+                        read_messages=True,
+                        send_messages=True,
+                        mention_everyone=False
+                    )
+                    logger.info(f"Added {member.name} to music channel permissions")
+                except Exception as e:
+                    logger.error(f"Failed to add permissions for {member.name}: {e}")
+            
+            # คนออกจากห้องเสียงที่บอทอยู่
+            elif before.channel and before.channel.id == vc.channel.id and not member.bot:
+                # ไม่ลบ permission ออก เพื่อให้ยังเห็นประวัติแชทได้
+                # แต่ถ้าต้องการลบ uncomment บรรทัดด้านล่าง
+                # try:
+                #     await music_channel.set_permissions(member, overwrite=None)
+                #     logger.info(f"Removed {member.name} from music channel permissions")
+                # except Exception as e:
+                #     logger.error(f"Failed to remove permissions for {member.name}: {e}")
+                pass
 
 @bot.event
 async def on_disconnect():
