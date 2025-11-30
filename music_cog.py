@@ -146,12 +146,30 @@ class MusicCog(commands.Cog):
                 manager.start_cleanup_task(interaction.guild)
                 
             else:
-                # Use existing channel
+                # Use existing channel - อัพเดท permissions ให้ทุกคนในห้องเสียง
                 music_channel = existing
                 manager.music_channel_id = music_channel.id
-                await interaction.followup.send(f"✅ เข้าห้องแชท {music_channel.mention} แล้ว!", ephemeral=True)
-                # Update permissions for the new owner if necessary
-                await music_channel.set_permissions(interaction.user, read_messages=True, send_messages=True)
+                
+                # อัพเดท permissions สำหรับทุกคนที่อยู่ในห้องเสียง
+                voice_channel = interaction.user.voice.channel
+                updated_count = 0
+                for member in voice_channel.members:
+                    if not member.bot:
+                        try:
+                            await music_channel.set_permissions(
+                                member,
+                                read_messages=True,
+                                send_messages=True,
+                                mention_everyone=False
+                            )
+                            updated_count += 1
+                        except Exception as e:
+                            logger.error(f"Failed to update permissions for {member.name}: {e}")
+                
+                await interaction.followup.send(
+                    f"✅ เข้าห้องแชท {music_channel.mention} แล้ว! อัพเดท permissions สำหรับ {updated_count} คน",
+                    ephemeral=True
+                )
                 
                 # Send the control view to the music channel if it doesn't exist
                 if not manager.now_playing_msg:
@@ -342,6 +360,60 @@ class MusicCog(commands.Cog):
             logger.error(f"Error adding song to queue: {e}")
             await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {str(e)}", ephemeral=True)
 
+    @app_commands.command(name="sync_permissions", description="อัพเดท permissions ของห้องแชทให้ตรงกับคนในห้องเสียง")
+    async def sync_permissions(self, interaction):
+        """Sync music channel permissions with voice channel members"""
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error deferring interaction: {e}")
+            return
+        
+        manager = self.bot.get_manager(interaction.guild_id)
+        
+        # Check if user is in voice channel
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            await interaction.followup.send("❌ คุณต้องอยู่ในห้องเสียงก่อน!", ephemeral=True)
+            return
+        
+        # Check if music channel exists
+        if not manager.music_channel_id:
+            await interaction.followup.send("❌ ยังไม่มีห้องแชทเพลง! ใช้ `/join` ก่อน", ephemeral=True)
+            return
+        
+        music_channel = interaction.guild.get_channel(manager.music_channel_id)
+        if not music_channel:
+            await interaction.followup.send("❌ ไม่พบห้องแชทเพลง!", ephemeral=True)
+            return
+        
+        # Check if bot is in voice channel
+        vc = manager.voice_client
+        if not vc or not vc.channel:
+            await interaction.followup.send("❌ บอทยังไม่ได้เข้าห้องเสียง!", ephemeral=True)
+            return
+        
+        # Sync permissions for all members in voice channel
+        voice_channel = vc.channel
+        updated_count = 0
+        for member in voice_channel.members:
+            if not member.bot:
+                try:
+                    await music_channel.set_permissions(
+                        member,
+                        read_messages=True,
+                        send_messages=True,
+                        mention_everyone=False
+                    )
+                    updated_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to sync permissions for {member.name}: {e}")
+        
+        await interaction.followup.send(
+            f"✅ อัพเดท permissions สำเร็จ! ทุกคนในห้องเสียง ({updated_count} คน) สามารถเห็นและใช้งาน {music_channel.mention} ได้แล้ว",
+            ephemeral=True
+        )
+
     @app_commands.command(name="help", description="แสดงคำสั่งทั้งหมดของบอท")
     async def help_command(self, interaction):
         embed = discord.Embed(
@@ -351,13 +423,14 @@ class MusicCog(commands.Cog):
         )
         embed.add_field(name="/join", value="ให้บอทเข้าห้องเสียงและสร้างห้องแชทเพลง", inline=False)
         embed.add_field(name="/play [ชื่อเพลง/URL]", value="เล่นเพลงจาก YouTube", inline=False)
-        embed.add_field(name="/leave", value="ให้บอทออกจากห้องเสียงและลบห้องแชทเพลง (เฉพาะเจ้าของห้อง/แอดมิน)", inline=False)
+        embed.add_field(name="/sync_permissions", value="อัพเดท permissions ของห้องแชทให้ตรงกับคนในห้องเสียง", inline=False)
+        embed.add_field(name="/leave", value="ให้บอทออกจากห้องเสียงและลบห้องแชทเพลง", inline=False)
         embed.add_field(name="/queue", value="แสดงคิวเพลงปัจจุบัน", inline=False)
-        embed.add_field(name="/remove [ลำดับ]", value="ลบเพลงออกจากคิว (เฉพาะเจ้าของห้อง/แอดมิน)", inline=False)
-        embed.add_field(name="/shuffle", value="สุ่มลำดับเพลงในคิว (เฉพาะเจ้าของห้อง/แอดมิน)", inline=False)
-        embed.add_field(name="/loop", value="เปิด/ปิดการเล่นซ้ำคิวเพลง (เฉพาะเจ้าของห้อง/แอดมิน)", inline=False)
-        embed.add_field(name="/autoplay", value="เปิด/ปิดโหมดเล่นเพลงอัตโนมัติเมื่อคิวหมด (เฉพาะเจ้าของห้อง/แอดมิน)", inline=False)
-        embed.add_field(name="/filter [ชื่อ]", value="ตั้งค่า filter/effect (bass, nightcore, pitch) (เฉพาะเจ้าของห้อง/แอดมิน)", inline=False)
+        embed.add_field(name="/remove [ลำดับ]", value="ลบเพลงออกจากคิว", inline=False)
+        embed.add_field(name="/shuffle", value="สุ่มลำดับเพลงในคิว", inline=False)
+        embed.add_field(name="/loop", value="เปิด/ปิดการเล่นซ้ำคิวเพลง", inline=False)
+        embed.add_field(name="/autoplay", value="เปิด/ปิดโหมดเล่นเพลงอัตโนมัติเมื่อคิวหมด", inline=False)
+        embed.add_field(name="/filter [ชื่อ]", value="ตั้งค่า filter/effect (bass, nightcore, pitch)", inline=False)
         embed.add_field(name="ในห้องแชทเพลง", value="พิมพ์ชื่อเพลงหรือวางลิงก์เพื่อเพิ่มเพลงในคิว", inline=False)
         embed.set_footer(text="ควบคุมเพลงเพิ่มเติมได้จากปุ่มในข้อความ Now Playing")
         
