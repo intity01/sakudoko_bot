@@ -10,6 +10,7 @@ logger = logging.getLogger('discord_bot')
 class MusicCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.sync_cooldowns = {}  # guild_id: last_sync_time
 
     def is_in_voice_with_bot(self, interaction):
         """Checks if the user is in the same voice channel as the bot."""
@@ -370,6 +371,24 @@ class MusicCog(commands.Cog):
             logger.error(f"Error deferring interaction: {e}")
             return
         
+        # Rate limit: 30 seconds cooldown per guild
+        import time
+        now = time.time()
+        
+        # Cleanup old cooldowns (older than 5 minutes)
+        if len(self.sync_cooldowns) > 100:  # Prevent memory leak
+            cutoff = now - 300
+            self.sync_cooldowns = {gid: t for gid, t in self.sync_cooldowns.items() if t > cutoff}
+        
+        last_sync = self.sync_cooldowns.get(interaction.guild_id, 0)
+        if now - last_sync < 30:
+            remaining = int(30 - (now - last_sync))
+            await interaction.followup.send(
+                f"⏳ กรุณารอ {remaining} วินาที ก่อนใช้คำสั่งนี้อีกครั้ง",
+                ephemeral=True
+            )
+            return
+        
         manager = self.bot.get_manager(interaction.guild_id)
         
         # Check if user is in voice channel
@@ -393,9 +412,16 @@ class MusicCog(commands.Cog):
             await interaction.followup.send("❌ บอทยังไม่ได้เข้าห้องเสียง!", ephemeral=True)
             return
         
+        # Check if user is in the same voice channel as bot
+        if interaction.user.voice.channel.id != vc.channel.id:
+            await interaction.followup.send("❌ คุณต้องอยู่ในห้องเสียงเดียวกับบอท!", ephemeral=True)
+            return
+        
         # Sync permissions for all members in voice channel
         voice_channel = vc.channel
         updated_count = 0
+        failed_count = 0
+        
         for member in voice_channel.members:
             if not member.bot:
                 try:
@@ -406,13 +432,27 @@ class MusicCog(commands.Cog):
                         mention_everyone=False
                     )
                     updated_count += 1
+                except discord.Forbidden:
+                    logger.error(f"No permission to update {member.name}")
+                    failed_count += 1
                 except Exception as e:
                     logger.error(f"Failed to sync permissions for {member.name}: {e}")
+                    failed_count += 1
         
-        await interaction.followup.send(
-            f"✅ อัพเดท permissions สำเร็จ! ทุกคนในห้องเสียง ({updated_count} คน) สามารถเห็นและใช้งาน {music_channel.mention} ได้แล้ว",
-            ephemeral=True
-        )
+        # Update cooldown
+        self.sync_cooldowns[interaction.guild_id] = now
+        
+        if failed_count > 0:
+            await interaction.followup.send(
+                f"⚠️ อัพเดท permissions สำเร็จ {updated_count} คน, ล้มเหลว {failed_count} คน\n"
+                f"ทุกคนในห้องเสียงสามารถเห็นและใช้งาน {music_channel.mention} ได้แล้ว",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                f"✅ อัพเดท permissions สำเร็จ! ทุกคนในห้องเสียง ({updated_count} คน) สามารถเห็นและใช้งาน {music_channel.mention} ได้แล้ว",
+                ephemeral=True
+            )
 
     @app_commands.command(name="help", description="แสดงคำสั่งทั้งหมดของบอท")
     async def help_command(self, interaction):

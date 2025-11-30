@@ -15,6 +15,7 @@ class RequestFirstSongView(discord.ui.View):
 class MusicControlView(discord.ui.View):
     """Simplified view for music controls"""
     _cooldowns = {}  # user_id: last_used_time
+    _last_cleanup = time.time()  # Track last cleanup time
 
     def __init__(self, bot, logger_instance, guild: discord.Guild, channel_id: int, server_id: int):
         super().__init__(timeout=None)
@@ -54,6 +55,13 @@ class MusicControlView(discord.ui.View):
     async def _check_cooldown(self, interaction: discord.Interaction, cooldown: int = 2):
         user_id = interaction.user.id
         now = time.time()
+        
+        # Cleanup old cooldowns every 5 minutes to prevent memory leak
+        if now - self._last_cleanup > 300:  # 5 minutes
+            cutoff = now - 60  # Remove entries older than 1 minute
+            self._cooldowns = {uid: t for uid, t in self._cooldowns.items() if t > cutoff}
+            self._last_cleanup = now
+        
         last = self._cooldowns.get(user_id, 0)
         if now - last < cooldown:
             if not interaction.response.is_done():
