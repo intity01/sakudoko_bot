@@ -36,7 +36,8 @@ class CobaltAPI:
         self.session = None
         self.headers = {
             "Accept": "application/json",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
     
     async def get_session(self):
@@ -75,40 +76,45 @@ class CobaltAPI:
         try:
             payload = {
                 "url": youtube_url,
-                "downloadMode": "audio",
-                "audioFormat": "mp3"
+                "videoQuality": "720",
+                "audioFormat": "mp3",
+                "isAudioOnly": True,
+                "disableMetadata": True
             }
             
             async with session.post(
-                f"{COBALT_API}/",
+                COBALT_API,
                 json=payload,
                 headers=self.headers,
                 timeout=30
             ) as resp:
+                data = await resp.json()
+                logger.info(f"Cobalt API response status: {resp.status}, data: {data.get('status', 'unknown')}")
+                
                 if resp.status == 200:
-                    data = await resp.json()
+                    status = data.get("status")
                     
-                    if data.get("status") == "tunnel" or data.get("status") == "redirect":
+                    if status in ["stream", "tunnel", "redirect"]:
                         audio_url = data.get("url")
                         if audio_url:
                             logger.info(f"Cobalt API success: got audio URL")
                             return audio_url
                     
-                    elif data.get("status") == "picker":
-                        # Multiple options, pick first audio
+                    elif status == "picker":
                         picker = data.get("picker", [])
                         for item in picker:
-                            if item.get("type") == "audio":
+                            if "audio" in item.get("type", ""):
                                 return item.get("url")
                         if picker:
                             return picker[0].get("url")
                     
-                    elif data.get("status") == "error":
-                        error_msg = data.get("error", {}).get("code", "Unknown error")
+                    elif status == "error":
+                        error_msg = data.get("error", {}).get("code", data.get("text", "Unknown"))
                         logger.error(f"Cobalt API error: {error_msg}")
                         return None
                 else:
-                    logger.error(f"Cobalt API returned status {resp.status}")
+                    error_text = data.get("text", data.get("error", {}).get("code", "Unknown"))
+                    logger.error(f"Cobalt API returned status {resp.status}: {error_text}")
                     return None
                     
         except asyncio.TimeoutError:
