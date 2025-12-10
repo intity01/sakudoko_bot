@@ -3,7 +3,6 @@ import asyncio
 import os
 import logging
 import aiohttp
-import random
 import re
 
 logger = logging.getLogger('discord_bot')
@@ -18,8 +17,7 @@ def get_ffmpeg_options(filter_name=None):
     }
     filter_str = filter_map.get(filter_name)
     
-    # ปรับปรุงคุณภาพเสียง: เพิ่ม bitrate และ audio codec
-    options = '-vn -b:a 128k'  # 128kbps audio bitrate (เพิ่มคุณภาพ)
+    options = '-vn -b:a 128k'
     if filter_str:
         options += f' -af "{filter_str}"'
     
@@ -28,31 +26,25 @@ def get_ffmpeg_options(filter_name=None):
         'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
     }
 
-# Piped instances (ฟรี 100% - เสถียรกว่า Invidious)
-PIPED_INSTANCES = [
-    "https://pipedapi.kavin.rocks",
-    "https://api-piped.mha.fi",
-    "https://pipedapi.in.projectsegfau.lt",
-    "https://pipedapi-libre.kavin.rocks",
-    "https://api.piped.yt",
-    "https://pipedapi.adminforge.de",
-]
+# Cobalt API (ฟรี และเสถียร)
+COBALT_API = "https://api.cobalt.tools"
 
-class PipedAPI:
-    """Wrapper for Piped API to fetch YouTube data"""
+class CobaltAPI:
+    """Wrapper for Cobalt API to fetch YouTube audio"""
     
     def __init__(self):
-        self.current_instance = random.choice(PIPED_INSTANCES)
         self.session = None
+        self.headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
     
     async def get_session(self):
-        """Get or create aiohttp session"""
         if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession()
         return self.session
     
     async def close(self):
-        """Close aiohttp session"""
         if self.session and not self.session.closed:
             await self.session.close()
     
@@ -63,7 +55,6 @@ class PipedAPI:
             r'youtube\.com\/embed\/([a-zA-Z0-9_-]{11})',
             r'^([a-zA-Z0-9_-]{11})$'
         ]
-        
         for pattern in patterns:
             match = re.search(pattern, url)
             if match:
@@ -77,148 +68,146 @@ class PipedAPI:
             return match.group(1)
         return None
     
-    async def search(self, query: str, max_results: int = 1):
-        """Search for videos on YouTube via Piped"""
+    async def get_audio_url(self, youtube_url: str):
+        """Get audio stream URL from Cobalt API"""
         session = await self.get_session()
         
-        for instance in PIPED_INSTANCES:
-            try:
-                url = f"{instance}/search"
-                params = {
-                    'q': query,
-                    'filter': 'videos'
-                }
-                
-                async with session.get(url, params=params, timeout=10) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        results = []
-                        items = data.get('items', [])
-                        for item in items[:max_results]:
-                            if item.get('type') == 'stream':
-                                results.append({
-                                    'id': item.get('url', '').replace('/watch?v=', ''),
-                                    'title': item.get('title'),
-                                    'duration': item.get('duration', 0),
-                                    'thumbnail': item.get('thumbnail'),
-                                    'webpage_url': f"https://www.youtube.com{item.get('url')}"
-                                })
-                        if results:
-                            logger.info(f"Search successful on {instance}")
-                            return results
-            except asyncio.TimeoutError:
-                logger.warning(f"Timeout searching on {instance}")
-                continue
-            except Exception as e:
-                logger.warning(f"Failed to search on {instance}: {e}")
-                continue
+        try:
+            payload = {
+                "url": youtube_url,
+                "downloadMode": "audio",
+                "audioFormat": "mp3"
+            }
+            
+            async with session.post(
+                f"{COBALT_API}/",
+                json=payload,
+                headers=self.headers,
+                timeout=30
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    
+                    if data.get("status") == "tunnel" or data.get("status") == "redirect":
+                        audio_url = data.get("url")
+                        if audio_url:
+                            logger.info(f"Cobalt API success: got audio URL")
+                            return audio_url
+                    
+                    elif data.get("status") == "picker":
+                        # Multiple options, pick first audio
+                        picker = data.get("picker", [])
+                        for item in picker:
+                            if item.get("type") == "audio":
+                                return item.get("url")
+                        if picker:
+                            return picker[0].get("url")
+                    
+                    elif data.get("status") == "error":
+                        error_msg = data.get("error", {}).get("code", "Unknown error")
+                        logger.error(f"Cobalt API error: {error_msg}")
+                        return None
+                else:
+                    logger.error(f"Cobalt API returned status {resp.status}")
+                    return None
+                    
+        except asyncio.TimeoutError:
+            logger.error("Cobalt API timeout")
+            return None
+        except Exception as e:
+            logger.error(f"Cobalt API error: {e}")
+            return None
         
-        raise Exception("All Piped instances failed")
+        return None
     
-    async def get_video_info(self, video_id: str):
-        """Get video information and stream URL"""
+    async def search_youtube(self, query: str):
+        """Search YouTube using scraping (fallback method)"""
         session = await self.get_session()
         
-        for instance in PIPED_INSTANCES:
-            try:
-                url = f"{instance}/streams/{video_id}"
-                
-                async with session.get(url, timeout=15) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        
-                        # หา audio stream ที่ดีที่สุด
-                        audio_streams = data.get('audioStreams', [])
-                        
-                        if not audio_streams:
-                            logger.warning(f"No audio streams in response from {instance}")
-                            continue
-                        
-                        # เรียงตาม bitrate
-                        audio_streams.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
-                        best_audio = audio_streams[0]
-                        
-                        audio_url = best_audio.get('url')
-                        if not audio_url:
-                            logger.warning(f"No URL in audio stream from {instance}")
-                            continue
-                        
-                        logger.info(f"Successfully got video info from {instance}")
+        try:
+            search_url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
+            
+            async with session.get(search_url, timeout=10) as resp:
+                if resp.status == 200:
+                    text = await resp.text()
+                    # Extract video ID from search results
+                    match = re.search(r'"videoId":"([a-zA-Z0-9_-]{11})"', text)
+                    if match:
+                        video_id = match.group(1)
                         return {
                             'id': video_id,
-                            'title': data.get('title'),
-                            'url': audio_url,
-                            'duration': data.get('duration', 0),
-                            'thumbnail': data.get('thumbnailUrl'),
                             'webpage_url': f"https://www.youtube.com/watch?v={video_id}"
                         }
-                    else:
-                        logger.warning(f"Got status {resp.status} from {instance}")
-            except asyncio.TimeoutError:
-                logger.warning(f"Timeout getting video info from {instance}")
-                continue
-            except Exception as e:
-                logger.warning(f"Failed to get video info from {instance}: {e}")
-                continue
+        except Exception as e:
+            logger.error(f"YouTube search error: {e}")
         
-        raise Exception("All Piped instances failed")
+        return None
     
-    async def get_playlist(self, playlist_id: str):
-        """Get playlist information"""
+    async def get_video_info(self, video_id: str):
+        """Get video info and audio URL"""
+        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+        
+        # Get audio URL from Cobalt
+        audio_url = await self.get_audio_url(youtube_url)
+        
+        if not audio_url:
+            return None
+        
+        # Try to get title from YouTube page
+        title = await self._get_video_title(video_id)
+        
+        return {
+            'id': video_id,
+            'title': title or f"YouTube Video {video_id}",
+            'url': audio_url,
+            'duration': 0,
+            'thumbnail': f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
+            'webpage_url': youtube_url
+        }
+    
+    async def _get_video_title(self, video_id: str):
+        """Get video title from YouTube"""
         session = await self.get_session()
         
-        for instance in PIPED_INSTANCES:
-            try:
-                url = f"{instance}/playlists/{playlist_id}"
-                
-                async with session.get(url, timeout=15) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        videos = []
-                        
-                        for video in data.get('relatedStreams', []):
-                            video_id = video.get('url', '').replace('/watch?v=', '')
-                            videos.append({
-                                'id': video_id,
-                                'title': video.get('title'),
-                                'duration': video.get('duration', 0),
-                                'thumbnail': video.get('thumbnail'),
-                                'webpage_url': f"https://www.youtube.com/watch?v={video_id}"
-                            })
-                        
-                        return {
-                            'title': data.get('name'),
-                            'entries': videos
-                        }
-            except Exception as e:
-                logger.warning(f"Failed to get playlist from {instance}: {e}")
-                continue
+        try:
+            url = f"https://www.youtube.com/watch?v={video_id}"
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    text = await resp.text()
+                    # Extract title
+                    match = re.search(r'"title":"([^"]+)"', text)
+                    if match:
+                        return match.group(1)
+        except:
+            pass
         
-        raise Exception("All Piped instances failed")
+        return None
     
     async def extract_info(self, query: str, download=False):
-        """Extract info from URL or search query (yt-dlp compatible interface)"""
-        # ตรวจสอบว่าเป็น playlist หรือไม่
-        playlist_id = self.extract_playlist_id(query)
-        if playlist_id:
-            return await self.get_playlist(playlist_id)
-        
-        # ตรวจสอบว่าเป็น video URL หรือไม่
+        """Extract info from URL or search query"""
+        # Check if it's a YouTube URL
         video_id = self.extract_video_id(query)
+        
         if video_id:
             return await self.get_video_info(video_id)
         
-        # ถ้าไม่ใช่ URL ให้ search
-        results = await self.search(query, max_results=1)
-        if results:
-            video_id = results[0]['id']
-            return await self.get_video_info(video_id)
+        # Check if it's a playlist (not supported yet)
+        playlist_id = self.extract_playlist_id(query)
+        if playlist_id:
+            logger.warning("Playlist not supported with Cobalt API")
+            return None
+        
+        # Search YouTube
+        if not query.startswith(('http://', 'https://')):
+            search_result = await self.search_youtube(query)
+            if search_result:
+                return await self.get_video_info(search_result['id'])
         
         return None
 
 # สร้าง instance
-piped = PipedAPI()
-logger.info("Piped API initialized (free YouTube alternative)")
+cobalt = CobaltAPI()
+logger.info("Cobalt API initialized (free YouTube alternative)")
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
@@ -235,18 +224,16 @@ class YTDLSource(discord.PCMVolumeTransformer):
         loop = loop or asyncio.get_event_loop()
         
         try:
-            # ใช้ Piped API แทน yt-dlp
-            data = await piped.extract_info(url, download=not stream)
+            data = await cobalt.extract_info(url, download=not stream)
         except Exception as e:
-            logger.error(f"Piped API Error for {url}: {e}")
+            logger.error(f"Cobalt API Error for {url}: {e}")
             return None
 
         if not data:
             return None
 
-        # Ensure we have a direct stream URL
         if 'url' not in data:
-            logger.error(f"No direct URL found in Piped data for {data.get('title')}")
+            logger.error(f"No direct URL found for {data.get('title')}")
             return None
 
         filename = data['url']
@@ -254,5 +241,5 @@ class YTDLSource(discord.PCMVolumeTransformer):
         
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_opts), data=data)
 
-# Export piped instance for use in music_manager
-YTDL_INSTANCE = piped
+# Export for use in music_manager
+YTDL_INSTANCE = cobalt

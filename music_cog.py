@@ -318,9 +318,9 @@ class MusicCog(commands.Cog):
         
         # Add song to queue
         try:
-            # Extract info using Piped
-            from player import YTDL_INSTANCE as piped
-            info = await piped.extract_info(query, download=False)
+            # Extract info using Cobalt
+            from player import YTDL_INSTANCE as cobalt
+            info = await cobalt.extract_info(query, download=False)
             
             if not info:
                 await interaction.followup.send("❌ ไม่พบเพลงหรือวิดีโอจากคำค้นนี้", ephemeral=True)
