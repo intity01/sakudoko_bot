@@ -6,7 +6,7 @@ import random
 import logging
 from typing import Optional, Dict, Any, List, Set
 from views import MusicControlView
-from player import YTDLSource, YTDL_INSTANCE as cobalt
+from player import YTDLSource, YTDL_INSTANCE as ytdl
 from discord.ext import tasks
 
 logger = logging.getLogger('discord_bot')
@@ -125,7 +125,7 @@ class MusicManager:
                 
                 try:
                     # Search for a random song/playlist
-                    info = await cobalt.extract_info(keyword, download=False)
+                    info = await ytdl.extract_info(keyword, download=False)
                     urls = []
                     if info and 'entries' in info:
                         # Pick a random entry from the playlist/search results
@@ -388,8 +388,8 @@ class MusicManager:
         channel = message.channel
         
         try:
-            # 1. Extract info (async operation with Cobalt)
-            info = await cobalt.extract_info(query, download=False)
+            # 1. Extract info (async operation with yt-dlp)
+            info = await ytdl.extract_info(query, download=False)
             
             if not info:
                 await channel.send(embed=discord.Embed(title="Error", description="❌ ไม่พบเพลงหรือวิดีโอจากคำค้นนี้", color=0xff0000), delete_after=5)
